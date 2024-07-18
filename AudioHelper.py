@@ -7,6 +7,8 @@ from PyQt5.QtCore import QObject, pyqtSignal
 import AudioHelperGUI as GuiMdl
 import AudioGen as AudGenMdl
 import logging
+import pyaudio as pa
+import numpy as np
 
 # ==============================================================================
 # MAIN PROGRAM
@@ -21,9 +23,16 @@ app = QApplication(sys.argv)
 main_win = GuiMdl.AudioHelperGUI()
 main_win.show()
 
+# --- Parameters needed for AudioGen class
+FORMAT = pa.paFloat32
+CHANNELS = 1
+RATE = 44100
+FRAMES_PER_BUFFER = 1024
+FREQ = 440
+
 # --- Create AudioGen ---
 audio_gen_thread = QThread()
-audio_gen = AudGenMdl.AudioGen()
+audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ)
 audio_gen.enable()
 
 # --- Make Window & AudioGen Connections ---
