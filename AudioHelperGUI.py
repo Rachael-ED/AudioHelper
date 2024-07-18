@@ -117,6 +117,7 @@ class Watermelon(QWidget):
 # ==============================================================================
 # MODULE TESTBENCH
 #
+'''
 if __name__ == "__main__":
     print(f"Hey User!  This is just testing {__file__}")
     app = QApplication(sys.argv)
@@ -126,3 +127,4 @@ if __name__ == "__main__":
 
     app.exec()
     print("DONE")
+'''
