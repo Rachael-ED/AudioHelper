@@ -73,7 +73,7 @@ class AudioGen(QObject):
         # set up a stream
         # output_device_index: For Rachael's MacBook Pro, headphones = 1, speakers = 3
         stream = sound.open(format=self.format, channels=self.channels, rate=self.rate, output=True,
-                            output_device_index=1, frames_per_buffer=self.framesPerBuffer)
+                            output_device_index=0, frames_per_buffer=self.framesPerBuffer)
 
         while not self._stop_requested:
             if self._audio_on:

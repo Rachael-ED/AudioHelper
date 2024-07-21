@@ -3,9 +3,19 @@
 #
 import sys
 import time
+import logging
+
+import numpy as np
+
 from PyQt5.Qt import *
 from PyQt5.QtCore import QObject, pyqtSignal
-import logging
+
+import matplotlib
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+
+matplotlib.use('Qt5Agg')
 
 
 # ==============================================================================
@@ -21,27 +31,42 @@ class AudioHelperGUI(QMainWindow):
 
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_gen_enable = pyqtSignal(bool)
+    sig_audio_ana_enable = pyqtSignal(bool)
 
     def __init__(self):
+        # Call parent class' init
         super(QMainWindow, self).__init__()
 
-        self.setWindowTitle("Watermelon Plotter")
-        self.resize(300, 150)
+        # Some Basic Window Setup
+        self.setWindowTitle("AudioHelper")
+        self.resize(600, 600)
 
         layout = QVBoxLayout()
 
-        self.watermelon = Watermelon()
-        layout.addWidget(self.watermelon)
+        # Create Plot for Spectrum
+        plt_canvas = FigureCanvas(Figure(figsize=(5, 3)))
+        layout.addWidget(plt_canvas)
+        layout.addWidget(NavigationToolbar(plt_canvas, self))
 
-        self.size_slider = QSlider(Qt.Horizontal)
-        self.size_slider.setValue(10)
-        self.size_slider.setRange(1, 100)
-        self.size_slider.valueChanged.connect(self.size_changed)
-        layout.addWidget(self.size_slider)
+        self.plt_ax = plt_canvas.figure.subplots()
+        self.plt_ax.grid(visible=True, which='both', axis='x')
+        self.plt_ax.grid(visible=True, which='major', axis='y')
+        self.plt_ax.semilogx()
+        self.plt_ax.set_xlabel('Frequency [Hz]')
+        self.plt_ax.set_ylabel('Amplitude [dBm]')
+        self.plt_line_meas_freq = np.linspace(50, 50000, 1000)
+        self.plt_line_meas_ampl = np.random.randint(0, 10, 1000)
+        plt_refs = self.plt_ax.plot(self.plt_line_meas_freq, self.plt_line_meas_ampl)
+        self.plt_line_meas = plt_refs[0]
+        #self.plt_line_meas.figure.canvas.draw()
 
-        self.stop_btn = QPushButton("Disable Tone", self)
-        self.stop_btn.clicked.connect(self.stop_btn_click)
-        layout.addWidget(self.stop_btn)
+        self.btn_aud_ana_enable = QPushButton("Disable Analysis", self)
+        self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
+        layout.addWidget(self.btn_aud_ana_enable)
+
+        self.btn_aud_gen_enable = QPushButton("Disable Tone", self)
+        self.btn_aud_gen_enable.clicked.connect(self.btn_aud_gen_enable_click)
+        layout.addWidget(self.btn_aud_gen_enable)
 
         central_widget = QWidget()
         central_widget.setLayout(layout)
@@ -53,71 +78,35 @@ class AudioHelperGUI(QMainWindow):
         time.sleep(1)
         logging.info("Main window closing")
 
-    def stop_btn_click(self):
-        if self.stop_btn.text() == "Disable Tone":
+    def btn_aud_gen_enable_click(self):
+        if self.btn_aud_gen_enable.text() == "Disable Tone":
             logging.info("Telling AudioGen to turn off")
             self.sig_audio_gen_enable.emit(False)
-            self.stop_btn.setText("Enable Tone")
+            self.btn_aud_gen_enable.setText("Enable Tone")
         else:
             logging.info("Telling AudioGen to turn on")
             self.sig_audio_gen_enable.emit(True)
-            self.stop_btn.setText("Disable Tone")
+            self.btn_aud_gen_enable.setText("Disable Tone")
 
-    def size_changed(self, i):
-        self.watermelon.set_size(i)
-
-
-# ==============================================================================
-# TEMP CLASS DEFINITION
-#
-class Watermelon(QWidget):
-    """Class: AudioHelperGUI"""
-    def __init__(self):
-        super(Watermelon, self).__init__()
-
-        self.size = 10
-
-        self.setAutoFillBackground(True)
-
-        palette = self.palette()
-        palette.setColor(QPalette.Window, QColor('white'))
-        self.setPalette(palette)
-
-    def set_size(self, new_size):
-        self.size = new_size
-        self.repaint()
-
-    def paintEvent(self, event):
-        frm_h = self.height()
-        frm_w = self.width()
-        s = self.size
-
-        x1 = int((frm_w/2) - (frm_w*s/100/2))
-        y1 = int((frm_h/2) - (frm_h*s/100/2))
-
-        w = int(frm_w*s/100)
-        h = int(frm_h*s/100)
-
-        if frm_h > frm_w:
-            pen_width = int(frm_w/10*s/100)
+    def btn_aud_ana_enable_click(self):
+        if self.btn_aud_ana_enable.text() == "Disable Analysis":
+            logging.info("Telling AudioAna to turn off")
+            self.sig_audio_ana_enable.emit(False)
+            self.btn_aud_ana_enable.setText("Enable Analysis")
         else:
-            pen_width = int(frm_h/10*s/100)
-        if pen_width < 1:
-            pen_width = 1
+            logging.info("Telling AudioAna to turn on")
+            self.sig_audio_ana_enable.emit(True)
+            self.btn_aud_ana_enable.setText("Disable Analysis")
 
-        qp = QPainter()
-        qp.begin(self)
-        qp.setPen(QPen(QColor('green'), pen_width))
-        qp.drawEllipse(x1, y1, w, h)   # (left, top, width, height)
-        qp.end()
-
-        super().paintEvent(event)
-
+    def update_plot(self):
+        self.plt_line_meas_freq = np.linspace(50, 50000, 1000)
+        self.plt_line_meas_ampl = np.random.randint(0, 10, 1000)
+        self.plt_line_meas.set_data(self.plt_line_meas_freq, self.plt_line_meas_ampl)
+        self.plt_line_meas.figure.canvas.draw()
 
 # ==============================================================================
 # MODULE TESTBENCH
 #
-'''
 if __name__ == "__main__":
     print(f"Hey User!  This is just testing {__file__}")
     app = QApplication(sys.argv)
@@ -127,4 +116,3 @@ if __name__ == "__main__":
 
     app.exec()
     print("DONE")
-'''
