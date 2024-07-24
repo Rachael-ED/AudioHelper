@@ -39,7 +39,7 @@ main_win.show()
 # --- Create AudioGen ---
 audio_gen_thread = QThread()
 audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ)
-audio_gen.enable()
+# audio_gen.enable()
 
 # --- Create AudioAnalyzer ---
 audio_ana_thread = QThread()
