@@ -51,6 +51,8 @@ audio_ana.enable()
 main_win.sig_audio_gen_enable.connect(audio_gen.enable)
 main_win.sig_audio_ana_enable.connect(audio_ana.enable)
 
+main_win.sig_changeFreq.connect(audio_gen.changeFreq)
+
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available
 
 main_win.sig_closing.connect(audio_gen.stop)                      # When user closes main window, stop audio generator

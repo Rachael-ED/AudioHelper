@@ -33,31 +33,16 @@ class AudioGen(QObject):
         self.rate = rate
         self.framesPerBuffer = framesPerBuffer
         self.freq = freq
+        self.vol = 1
+        self.outputIndex = 3  # for Rachael, 1 = headphones, 3 = speakers
+        self.numSamples = 1000
+        self.t_start = 0
+        self.t_end = self.numSamples / self.rate
+        self.currFreq = freq
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
         logging.info(f"AudioGen enable = {audio_on}")
-
-    # --- ORIGINAL FUNCTION FROM RACHAEL'S CODE ---
-    '''
-    def playTone(self):
-        vol = 1
-        freq = 440
-        # instantiate PyAudio
-        sound = pa.PyAudio()
-        # set up a stream
-        # output_device_index: For Rachael's MacBook Pro, headphones = 1, speakers = 3
-        stream = sound.open(format=self.format, channels=self.channels, rate=self.rate, output=True,
-                            output_device_index=1, frames_per_buffer=self.framesPerBuffer)
-
-        # define the pitch
-        # equation: y = volume * sin(2 * pi * freq * time)
-        # np.linspace(start, stop, num samples, don't include last sample)
-        pitch = vol * (np.sin(2 * np.pi * freq * np.linspace(0, 1 / freq, int(44100 / freq), endpoint=False))).astype(np.float32)
-        stream.write(pitch, num_frames=int(44100 / freq))
-        #stream.close()
-        #sound.terminate()
-    '''
 
     def stop(self):
         logging.info("AudioGen stop requested")
@@ -67,27 +52,44 @@ class AudioGen(QObject):
         logging.info("AudioGen started")
         self._stop_requested = False
 
-        vol = 1
         # instantiate PyAudio
         sound = pa.PyAudio()
         # set up a stream
         # output_device_index: For Rachael's MacBook Pro, headphones = 1, speakers = 3
         stream = sound.open(format=self.format, channels=self.channels, rate=self.rate, output=True,
-                            output_device_index=0, frames_per_buffer=self.framesPerBuffer)
+                            output_device_index=self.outputIndex, frames_per_buffer=self.framesPerBuffer)
 
         while not self._stop_requested:
             if self._audio_on:
-                # define the pitch
+                # keep track of current frequency
+                self.currFreq = self.freq
+                # print(self.currFreq)
                 # equation: y = volume * sin(2 * pi * freq * time)
                 # np.linspace(start, stop, num samples, don't include last sample)
-                pitch = vol * (np.sin(2 * np.pi * self.freq * np.linspace(0, 1 / self.freq, int(self.rate / self.freq), endpoint=False))).astype(np.float32)
-                stream.write(pitch, num_frames=int(self.rate / self.freq))
+                pitch = (self.vol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
+                stream.write(pitch, num_frames=self.numSamples)
+                # define t_start
+                self.t_start = self.t_startAtValt_end()
+                self.t_end = self.t_start + (self.numSamples / self.rate)
+                # print(pitch)
+                # print("\n\n\n")
+            else:
+                self.t_start = 0
+                self.t_end = self.numSamples/self.rate
 
         logging.info("AudioGen finished")
         # release resources
         stream.close()
         sound.terminate()
         self.finished.emit()
+
+    def t_startAtValt_end(self):
+        # find what time on the new wave the y-val = valAt_t_end
+        tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
+        return tAt_t_end
+
+    def changeFreq(self, newFreq):
+        self.freq = newFreq
 
 
 # ==============================================================================
