@@ -38,6 +38,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_gen_enable = pyqtSignal(bool)
     sig_audio_ana_enable = pyqtSignal(bool)
+    sig_changeFreq = pyqtSignal(int)
 
     def __init__(self):
         # Call parent class' init
