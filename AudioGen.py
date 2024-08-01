@@ -35,6 +35,7 @@ class AudioGen(QObject):
         self.freq = freq
         self.vol = 1
         self.outputIndex = 3  # for Rachael, 1 = headphones, 3 = speakers
+        #self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
