@@ -51,7 +51,8 @@ audio_ana.enable()
 main_win.sig_audio_gen_enable.connect(audio_gen.enable)
 main_win.sig_audio_ana_enable.connect(audio_ana.enable)
 
-main_win.sig_changeFreq.connect(audio_gen.changeFreq)
+#main_win.sig_changeFreq.connect(audio_gen.changeFreq)
+main_win.txt_aud_gen_freq1.textChanged.connect(audio_gen.changeFreq)
 
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available
 

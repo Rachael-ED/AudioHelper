@@ -4,6 +4,7 @@
 import sys
 import time
 import logging
+import random
 import re
 
 import numpy as np
@@ -19,6 +20,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
 from ui_AudioHelperGUI import Ui_ui_AudioHelperGUI
+
+import BufferManager as BufMan
 
 matplotlib.use('Qt5Agg')
 
@@ -57,6 +60,10 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Call parent class' init
         super(QMainWindow, self).__init__()
         self.setupUi(self)
+
+        # Create Buffer Manager
+        self.buf_man = BufMan.BufferManager("AudioHelperGUI")
+        self.buf_id_list = []   # Temporary for testing
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
@@ -258,9 +265,20 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.sig_audio_ana_enable.emit(True)
             self.btn_aud_ana_enable.setText("Freeze")
 
-    def update_plot(self):
+    def update_plot(self, buf_id):
+        """
+        self.buf_id_list.append(buf_id)
+        if (len(self.buf_id_list) < 4):
+            return
+        #elif (len(self.buf_id_list) > 8):
+        #    pass
+        elif (random.random() < 0.1):
+            return
+        buf_id = self.buf_id_list.pop(0)
+        """
+
         self.plt_line_meas_freq = np.linspace(50, 50000, 1000)
-        self.plt_line_meas_ampl = np.random.randint(0, 10, 1000)
+        self.plt_line_meas_ampl = self.buf_man.free(buf_id)
         self.plt_line_meas.set_data(self.plt_line_meas_freq, self.plt_line_meas_ampl)
         self.plt_line_meas.figure.canvas.draw()
 
