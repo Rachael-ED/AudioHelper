@@ -6,6 +6,10 @@ import threading
 import time
 import logging
 
+import BufferManager as BufMan
+
+import numpy as np
+
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -18,7 +22,7 @@ class AudioAnalyzer(QObject):
             QObject     - Allows object to be assigned to QThread to run in the background.
     """
 
-    sig_newdata = pyqtSignal()
+    sig_newdata = pyqtSignal(int)
     finished = pyqtSignal()
 
     def __init__(self, name="aud_ana"):
@@ -26,6 +30,7 @@ class AudioAnalyzer(QObject):
         self._audio_on = False
         self._stop_requested = False
         self.name = name
+        self.buf_man = BufMan.BufferManager("AudioAnalyzer")
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -43,7 +48,9 @@ class AudioAnalyzer(QObject):
             it_cnt += 1
             if self._audio_on:
                 logging.info(f"{self.name}({it_cnt:02d}): Analyzed something.")
-                self.sig_newdata.emit()
+                buf = np.random.randint(0, 10, 1000)
+                buf_id = self.buf_man.alloc(buf)
+                self.sig_newdata.emit(buf_id)
                 time.sleep(1)
         logging.info("AudioAnalyzer finished")
         self.finished.emit()
