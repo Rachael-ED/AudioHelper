@@ -22,6 +22,8 @@ class AudioGen(QObject):
 
     finished = pyqtSignal()
 
+    # Comment by Rachael
+
     def __init__(self, format, channels, rate, framesPerBuffer, freq, name="aud_gen"):
         super().__init__()
         self._audio_on = False
