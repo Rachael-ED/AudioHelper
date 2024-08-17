@@ -48,7 +48,7 @@ class AudioAnalyzer(QObject):
             it_cnt += 1
             if self._audio_on:
                 logging.info(f"{self.name}({it_cnt:02d}): Analyzed something.")
-                buf = np.random.randint(0, 10, 1000)
+                buf = np.random.randint(0, 10, 16384)
                 buf_id = self.buf_man.alloc(buf)
                 self.sig_newdata.emit(buf_id)
                 time.sleep(1)
