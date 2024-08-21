@@ -9,6 +9,7 @@ import logging
 import BufferManager as BufMan
 
 import numpy as np
+from scipy.fft import rfft, rfftfreq
 
 
 # ==============================================================================
@@ -25,6 +26,8 @@ class AudioAnalyzer(QObject):
     sig_newdata = pyqtSignal(int)
     finished = pyqtSignal()
 
+    sig_micdata = pyqtSignal(int)
+
     def __init__(self, name="aud_ana"):
         super().__init__()
         self._audio_on = False
@@ -40,20 +43,22 @@ class AudioAnalyzer(QObject):
         logging.info("AudioAnalyzer stop requested")
         self._stop_requested = True
 
-    def run(self):
-        logging.info("AudioAnalyzer started")
-        self._stop_requested = False
-        it_cnt = 0
-        while not self._stop_requested:
-            it_cnt += 1
-            if self._audio_on:
-                logging.info(f"{self.name}({it_cnt:02d}): Analyzed something.")
-                buf = np.random.randint(0, 10, 1000)
-                buf_id = self.buf_man.alloc(buf)
-                self.sig_newdata.emit(buf_id)
-                time.sleep(1)
-        logging.info("AudioAnalyzer finished")
-        self.finished.emit()
+    def analyze(self, mic_buf_id):
+        mic_buf = self.buf_man.free(mic_buf_id)
+        meas_t = mic_buf[0]
+        meas_v = mic_buf[1]
+
+        num_samp = len(meas_v)            # Number of audio samples
+        t_samp = meas_t[1] - meas_t[0]  # Audio sampling period
+
+        meas_f = rfftfreq(num_samp, t_samp)   # Frequency of measurement spectrum
+        meas_fft = rfft(meas_v)                 # FFT of measurement
+        meas_p = np.abs(meas_fft)
+
+        spec_buf = [meas_f, meas_p]
+        spec_buf_id = self.buf_man.alloc(spec_buf)
+        self.sig_newdata.emit(spec_buf_id)
+        logging.info(f"{self.name}: Analyzed spectrum.")
 
 
 # ==============================================================================
