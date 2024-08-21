@@ -50,8 +50,9 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     #
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_gen_enable = pyqtSignal(bool)
-    sig_audio_ana_enable = pyqtSignal(bool)
+    #sig_audio_ana_enable = pyqtSignal(bool)
     sig_changeFreq = pyqtSignal(int)
+    sig_mic_reader_enable = pyqtSignal(bool)
 
     # ----------------------------------------------------------------------
     # Initialization & Termination
@@ -81,8 +82,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax.semilogx()
         self.plt_ax.set_xlabel('Frequency [Hz]')
         self.plt_ax.set_ylabel('Amplitude [dBm]')
-        self.plt_line_meas_freq = np.linspace(50, 50000, 1000)
-        self.plt_line_meas_ampl = np.random.randint(0, 10, 1000)
+        self.plt_line_meas_freq = np.linspace(50, 50000, 16384)
+        self.plt_line_meas_ampl = np.random.randint(0, 10, 16384)
         plt_refs = self.plt_ax.plot(self.plt_line_meas_freq, self.plt_line_meas_ampl)
         self.plt_line_meas = plt_refs[0]
 
@@ -258,11 +259,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def btn_aud_ana_enable_click(self):
         if self.btn_aud_ana_enable.text() == "Freeze":
             logging.info("Telling AudioAna to turn off")
-            self.sig_audio_ana_enable.emit(False)
+            self.sig_mic_reader_enable.emit(False)
             self.btn_aud_ana_enable.setText("Analyze")
         else:
             logging.info("Telling AudioAna to turn on")
-            self.sig_audio_ana_enable.emit(True)
+            self.sig_mic_reader_enable.emit(True)
             self.btn_aud_ana_enable.setText("Freeze")
 
     def update_plot(self, buf_id):

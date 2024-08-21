@@ -36,8 +36,8 @@ class AudioGen(QObject):
         self.framesPerBuffer = framesPerBuffer
         self.freq = freq
         self.vol = 1
-        #self.outputIndex = 3  # for Rachael, 1 = headphones, 3 = speakers
-        self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
+        self.outputIndex = 2  # for Rachael WITH headphones, 1 = headphones, 3 = speakers, else speaker = 2
+        #self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
@@ -70,6 +70,8 @@ class AudioGen(QObject):
                 # equation: y = volume * sin(2 * pi * freq * time)
                 # np.linspace(start, stop, num samples, don't include last sample)
                 pitch = (self.vol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
+                #pitch1 = pitch.tobytes()
+                #stream.write(pitch1)
                 stream.write(pitch, num_frames=self.numSamples)
                 # define t_start
                 self.t_start = self.t_startAtValt_end()
