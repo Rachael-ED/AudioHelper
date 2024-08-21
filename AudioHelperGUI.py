@@ -277,8 +277,17 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         buf_id = self.buf_id_list.pop(0)
         """
 
-        self.plt_line_meas_freq = np.linspace(50, 50000, 1000)
-        self.plt_line_meas_ampl = self.buf_man.free(buf_id)
+        buf = self.buf_man.free(buf_id)
+        self.plt_line_meas_freq = buf[0]
+        self.plt_line_meas_ampl = buf[1]
+
+        # Remove DC element
+        self.plt_line_meas_freq = np.delete(self.plt_line_meas_freq,0)
+        self.plt_line_meas_ampl = np.delete(self.plt_line_meas_ampl,0)
+
+        self.plt_ax.set_xlim(self.plt_line_meas_freq[0], self.plt_line_meas_freq[-1])
+        self.plt_ax.set_ylim(np.min(self.plt_line_meas_ampl), np.max(self.plt_line_meas_ampl))
+
         self.plt_line_meas.set_data(self.plt_line_meas_freq, self.plt_line_meas_ampl)
         self.plt_line_meas.figure.canvas.draw()
 
