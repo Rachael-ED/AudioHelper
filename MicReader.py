@@ -36,7 +36,8 @@ class MicReader(QObject):
         self.channels = channels
         self.rate = rate
         self.framesPerBuffer = 16384     # i.e. 2^14
-        self.inputIndex = 1     # For Rachael's MacBook Pro WITH headphones, computer mic = 2, else mic = 1
+        #self.inputIndex = 1     # For Rachael's MacBook Pro WITH headphones, computer mic = 2, else mic = 1
+        self.inputIndex = 4     # For Fahthar's MacBook Pro MacBook mic = 2
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -65,6 +66,8 @@ class MicReader(QObject):
                 voltageAndTime = [t, dataAsVoltage]
                 buf_id = self.buf_man.alloc(voltageAndTime)
                 self.sig_newdata.emit(buf_id)
+            else:
+                time.sleep(1)
 
         # release resources
         logging.info("MicInput finished")

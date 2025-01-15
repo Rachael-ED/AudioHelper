@@ -30,6 +30,9 @@ matplotlib.use('Qt5Agg')
 #
 C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep']
 
+C_SPEC_MAX_DB = 40
+C_SPEC_MIN_DB = -80
+C_SPEC_GRID_DB = 10
 
 # ==============================================================================
 # CLASS: MAIN WINDOW
@@ -81,9 +84,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax.grid(visible=True, which='major', axis='y')
         self.plt_ax.semilogx()
         self.plt_ax.set_xlabel('Frequency [Hz]')
-        self.plt_ax.set_ylabel('Amplitude [dBm]')
+        self.plt_ax.set_ylabel('Amplitude [dB]')
         self.plt_line_meas_freq = np.linspace(50, 50000, 16384)
         self.plt_line_meas_ampl = np.random.randint(0, 10, 16384)
+        self.plt_ax.set_ylim(C_SPEC_MIN_DB, C_SPEC_MAX_DB)
+        self.plt_ax.set_yticks(np.arange(C_SPEC_MIN_DB, C_SPEC_MAX_DB, C_SPEC_GRID_DB))
         plt_refs = self.plt_ax.plot(self.plt_line_meas_freq, self.plt_line_meas_ampl)
         self.plt_line_meas = plt_refs[0]
 
@@ -286,8 +291,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_line_meas_freq = np.delete(self.plt_line_meas_freq,0)
         self.plt_line_meas_ampl = np.delete(self.plt_line_meas_ampl,0)
 
+        self.plt_line_meas_ampl = np.clip(self.plt_line_meas_ampl, 1e-6, None)
+        self.plt_line_meas_ampl = 20 * np.log10(self.plt_line_meas_ampl)
+        self.plt_line_meas_ampl = np.clip(self.plt_line_meas_ampl, C_SPEC_MIN_DB, C_SPEC_MAX_DB)
+
         self.plt_ax.set_xlim(self.plt_line_meas_freq[0], self.plt_line_meas_freq[-1])
-        self.plt_ax.set_ylim(np.min(self.plt_line_meas_ampl), np.max(self.plt_line_meas_ampl))
+        #self.plt_ax.set_ylim(np.min(self.plt_line_meas_ampl), np.max(self.plt_line_meas_ampl))
 
         self.plt_line_meas.set_data(self.plt_line_meas_freq, self.plt_line_meas_ampl)
         self.plt_line_meas.figure.canvas.draw()

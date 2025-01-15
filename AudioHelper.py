@@ -15,6 +15,7 @@ import numpy as np
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
+#
 
 # --- Parameters needed for AudioGen class
 FORMAT = pa.paFloat32
@@ -45,7 +46,7 @@ audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ)
 # --- Create AudioAnalyzer ---
 audio_ana_thread = QThread()
 audio_ana = AudAnaMdl.AudioAnalyzer()
-audio_ana.enable()
+#audio_ana.enable()
 
 # --- Create MicReader ---
 mic_reader_thread = QThread()
@@ -61,6 +62,7 @@ main_win.sig_mic_reader_enable.connect(mic_reader.enable)
 #main_win.sig_changeFreq.connect(audio_gen.changeFreq)
 main_win.txt_aud_gen_freq1.textChanged.connect(audio_gen.changeFreq)
 
+mic_reader.sig_newdata.connect(audio_ana.analyze)                 # Analyze mic data when new data is available
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available
 
 main_win.sig_closing.connect(audio_gen.stop)                      # When user closes main window, stop audio generator
