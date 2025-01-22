@@ -30,7 +30,7 @@ matplotlib.use('Qt5Agg')
 #
 C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep']
 
-C_SPEC_MAX_DB = 40
+C_SPEC_MAX_DB = 80
 C_SPEC_MIN_DB = -80
 C_SPEC_GRID_DB = 10
 
@@ -54,7 +54,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_gen_enable = pyqtSignal(bool)
     #sig_audio_ana_enable = pyqtSignal(bool)
-    sig_changeFreq = pyqtSignal(int)
     sig_mic_reader_enable = pyqtSignal(bool)
 
     # ----------------------------------------------------------------------

@@ -42,8 +42,8 @@ class BufferManager:
 
         if buf_id is None:
             logging.error(f"Unable to find buffer for {self.name}")
-        else:
-            logging.info(f"Added buffer #{buf_id} for {self.name}")
+        #else:
+        #    logging.info(f"Added buffer #{buf_id} for {self.name}")
         return buf_id
 
     # Releases the specified buffer location, allowing it to be used again
@@ -54,11 +54,11 @@ class BufferManager:
         g_buf_list[buf_id] = None
         g_mutex.unlock()
         g_sem.release(1)
-        logging.info(f"Released buffer #{buf_id} for {self.name}")
+        #logging.info(f"Released buffer #{buf_id} for {self.name}")
         return buf
 
     # Returns the specified buffer without removing it from the buffer list
     def get(self, buf_id):
         buf = g_buf_list[buf_id]
-        logging.info(f"Retrieved buffer #{buf_id} for {self.name}")
+        #logging.info(f"Retrieved buffer #{buf_id} for {self.name}")
         return buf
