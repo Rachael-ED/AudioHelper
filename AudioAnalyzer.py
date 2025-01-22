@@ -56,7 +56,7 @@ class AudioAnalyzer(QObject):
         spec_buf = [meas_f, meas_p]
         spec_buf_id = self.buf_man.alloc(spec_buf)
         self.sig_newdata.emit(spec_buf_id)
-        logging.info(f"{self.name}: Analyzed spectrum.")
+        #logging.info(f"{self.name}: Analyzed spectrum.")
 
     def run(self):
         logging.info("AudioAnalyzer started")
