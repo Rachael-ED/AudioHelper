@@ -66,7 +66,11 @@ class AudioGen(QObject):
             if self._audio_on:
                 if self.mode == "Single Tone":
                     # keep track of current frequency
+                    prevFreq = self.currFreq
                     self.currFreq = self.freq
+                    self.t_start = self.t_end * prevFreq / self.currFreq
+                    self.t_end = self.t_start + (self.numSamples / self.rate)
+
                     # print(self.currFreq)
                     # equation: y = volume * sin(2 * pi * freq * time)
                     # np.linspace(start, stop, num samples, don't include last sample)
@@ -81,10 +85,6 @@ class AudioGen(QObject):
                 stream.write(pitch, num_frames=self.numSamples)
 
                 # define t_start
-                self.t_start = self.t_startAtValt_end()
-                self.t_end = self.t_start + (self.numSamples / self.rate)
-                # print(pitch)
-                # print("\n\n\n")
             else:
                 self.t_start = 0
                 self.t_end = self.numSamples/self.rate
@@ -98,7 +98,8 @@ class AudioGen(QObject):
 
     def t_startAtValt_end(self):
         # find what time on the new wave the y-val = valAt_t_end
-        tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
+        tAt_t_end = self.t_end * self.currFreq / self.freq
+        #tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
         return tAt_t_end
 
     def changeFreq(self, newFreq):
