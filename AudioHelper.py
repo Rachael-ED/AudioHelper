@@ -23,7 +23,7 @@ CHANNELS = 1
 RATE = 44100
 FRAMES_PER_BUFFER = 1024
 FREQ = 440
-
+VOL_PCT = 50
 
 # ==============================================================================
 # MAIN PROGRAM
@@ -40,7 +40,7 @@ main_win.show()
 
 # --- Create AudioGen ---
 audio_gen_thread = QThread()
-audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ)
+audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ, VOL_PCT)
 #audio_gen.enable()
 
 # --- Create AudioAnalyzer ---
@@ -61,6 +61,9 @@ main_win.sig_mic_reader_enable.connect(mic_reader.enable)
 
 #main_win.sig_changeFreq.connect(audio_gen.changeFreq)
 main_win.txt_aud_gen_freq1.textChanged.connect(audio_gen.changeFreq)
+main_win.txt_aud_gen_vol.textChanged.connect(audio_gen.changeVol)
+
+main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
 
 mic_reader.sig_newdata.connect(audio_ana.analyze)                 # Analyze mic data when new data is available
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available

@@ -24,18 +24,18 @@ class AudioGen(QObject):
 
     # Comment by Rachael
 
-    def __init__(self, format, channels, rate, framesPerBuffer, freq, name="aud_gen"):
+    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_pct, name="aud_gen"):
         super().__init__()
         self._audio_on = False
         self._stop_requested = False
         self.name = name
-        # --- FROM RACHAEL'S CODE ---
+        self.mode = "Single Tone"
         self.format = format
         self.channels = channels
         self.rate = rate
         self.framesPerBuffer = framesPerBuffer
         self.freq = freq
-        self.vol = 1
+        self.vol = vol_pct/100
         #self.outputIndex = 2  # for Rachael WITH headphones, 1 = headphones, 3 = speakers, else speaker = 2
         self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
@@ -64,20 +64,27 @@ class AudioGen(QObject):
 
         while not self._stop_requested:
             if self._audio_on:
-                # keep track of current frequency
-                self.currFreq = self.freq
-                # print(self.currFreq)
-                # equation: y = volume * sin(2 * pi * freq * time)
-                # np.linspace(start, stop, num samples, don't include last sample)
-                pitch = (self.vol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
-                #pitch1 = pitch.tobytes()
-                #stream.write(pitch1)
+                if self.mode == "Single Tone":
+                    # keep track of current frequency
+                    prevFreq = self.currFreq
+                    self.currFreq = self.freq
+                    self.t_start = self.t_end * prevFreq / self.currFreq
+                    self.t_end = self.t_start + (self.numSamples / self.rate)
+
+                    # print(self.currFreq)
+                    # equation: y = volume * sin(2 * pi * freq * time)
+                    # np.linspace(start, stop, num samples, don't include last sample)
+                    pitch = (self.vol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
+                    #pitch1 = pitch.tobytes()
+                    #stream.write(pitch1)
+                elif self.mode == "Noise":
+                    pitch = (self.vol * np.random.rand(self.numSamples)).astype(np.float32)
+                else:
+                    pitch = (np.array([0] * self.numSamples)).astype(np.float32)
+
                 stream.write(pitch, num_frames=self.numSamples)
+
                 # define t_start
-                self.t_start = self.t_startAtValt_end()
-                self.t_end = self.t_start + (self.numSamples / self.rate)
-                # print(pitch)
-                # print("\n\n\n")
             else:
                 self.t_start = 0
                 self.t_end = self.numSamples/self.rate
@@ -91,12 +98,23 @@ class AudioGen(QObject):
 
     def t_startAtValt_end(self):
         # find what time on the new wave the y-val = valAt_t_end
-        tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
+        tAt_t_end = self.t_end * self.currFreq / self.freq
+        #tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
         return tAt_t_end
 
     def changeFreq(self, newFreq):
         self.freq = round(float(newFreq), 0)
 
+    def changeVol(self, newVolPct):
+        newVolPct = round(float(newVolPct), 0)/100.0
+        if (newVolPct > 1):
+            newVolPct = 1
+        if (newVolPct < 0):
+            newVolPct = 0
+        self.vol = newVolPct
+
+    def changeMode(self, newMode):
+        self.mode = newMode
 
 # ==============================================================================
 # MODULE TESTBENCH
