@@ -128,16 +128,16 @@
           <item>
            <widget class="QSlider" name="sld_aud_gen_vol">
             <property name="minimum">
-             <number>0</number>
+             <number>-60</number>
             </property>
             <property name="maximum">
-             <number>100</number>
+             <number>0</number>
             </property>
             <property name="pageStep">
              <number>10</number>
             </property>
             <property name="value">
-             <number>50</number>
+             <number>-12</number>
             </property>
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -180,7 +180,7 @@
           <item>
            <widget class="QLineEdit" name="txt_aud_gen_vol">
             <property name="text">
-             <string>50</string>
+             <string>-12</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -211,7 +211,7 @@
           <item>
            <widget class="QLabel" name="lbl_aud_gen_vol_unit">
             <property name="text">
-             <string>%</string>
+             <string>dB</string>
             </property>
            </widget>
           </item>
