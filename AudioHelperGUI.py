@@ -37,6 +37,12 @@ C_SPEC_GRID_DB = 10
 C_SPEC_MAX_FREQ = 20000    # [Hz]
 C_SPEC_MIN_FREQ = 50       # [Hz]
 
+C_VOL_MAX_DB = 0
+C_VOL_MIN_DB = -60
+
+C_FREQ_MAX = 20000
+C_FREQ_MIN = 50
+
 # ==============================================================================
 # CLASS: MAIN WINDOW
 #
@@ -173,6 +179,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def sld_pos_to_freq(self, pos):
         freq = round(10**(pos/1000), 1)   # Hz
+        freq = max(C_FREQ_MIN, freq)
+        freq = min(C_FREQ_MAX, freq)
         return freq
 
     def sld_freq_to_pos(self, freq):   # Hz
@@ -266,8 +274,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def txt_aud_gen_vol_editingFinished(self):
         vol = int(self.txt_aud_gen_vol.text())
-        vol = max(vol, 0)
-        vol = min(vol, 100)
+        vol = max(vol, C_VOL_MIN_DB)
+        vol = min(vol, C_VOL_MAX_DB)
         #logging.info(f"AudioGen vol text changed to {vol}%")
 
         self.txt_aud_gen_vol.setText(f"{vol}")
