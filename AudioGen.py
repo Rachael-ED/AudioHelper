@@ -32,10 +32,11 @@ class AudioGen(QObject):
         self.mode = "Single Tone"
         self.format = format
         self.channels = channels
-        self.rate = rate
-        self.framesPerBuffer = framesPerBuffer
+        self.rate = rate                         # sampling rate = frame rate
+        self.framesPerBuffer = framesPerBuffer   # 1 "frame" = 1 sample on all channels
         self.freq = freq
-        self.vol = vol_pct/100
+        self.currVol = 0                     # Start at no volume
+        self.vol = vol_pct/100               # ... and ramp to target when enabled
         #self.outputIndex = 2  # for Rachael WITH headphones, 1 = headphones, 3 = speakers, else speaker = 2
         self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
@@ -63,44 +64,56 @@ class AudioGen(QObject):
                             output_device_index=self.outputIndex, frames_per_buffer=self.framesPerBuffer)
 
         while not self._stop_requested:
-            if self._audio_on:
+            # Determine Volume We'll Finish the Buffer With
+            #     If the volume changes, we'll bleed that out over the course of the buffer
+            #     to avoid audible pops when changing the volume
+            end_vol = self.vol
+            if not self._audio_on:
+                end_vol = 0
+
+            # Don't Output Anything if Fully Stopped
+            if (self.currVol == 0) and (end_vol == 0):
+                self.t_start = 0
+                self.t_end = self.numSamples/self.rate
+                time.sleep(1)
+
+            # Otherwise, Generate Output
+            else:
+                # Start with Tone of Unit Amplitude
                 if self.mode == "Single Tone":
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
                     self.t_start = self.t_end * prevFreq / self.currFreq
                     self.t_end = self.t_start + (self.numSamples / self.rate)
+                    time_array = np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)
 
                     # print(self.currFreq)
                     # equation: y = volume * sin(2 * pi * freq * time)
                     # np.linspace(start, stop, num samples, don't include last sample)
-                    pitch = (self.vol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
-                    #pitch1 = pitch.tobytes()
-                    #stream.write(pitch1)
+                    pitch_array = np.sin(2 * np.pi * self.currFreq * time_array)
+
+                    ###pitch = (self.currVol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
                 elif self.mode == "Noise":
-                    pitch = (self.vol * np.random.rand(self.numSamples)).astype(np.float32)
+                    pitch_array = (self.currVol * np.random.rand(self.numSamples)).astype(np.float32)
+
                 else:
-                    pitch = (np.array([0] * self.numSamples)).astype(np.float32)
+                    pitch_array = (np.array([0] * self.numSamples)).astype(np.float32)
 
-                stream.write(pitch, num_frames=self.numSamples)
+                # Scale Tone with Volume
+                #     Here, we'll bleed out any changes in volume over the course of the output buffer
+                vol_array = np.linspace(start=self.currVol, stop=end_vol, num=self.numSamples, endpoint=False)
+                self.currVol = end_vol
+                out_array = np.multiply(pitch_array, vol_array).astype(np.float32)
 
-                # define t_start
-            else:
-                self.t_start = 0
-                self.t_end = self.numSamples/self.rate
-                time.sleep(1)
+                # Write to Output
+                stream.write(out_array, num_frames=self.numSamples)
 
         logging.info("AudioGen finished")
         # release resources
         stream.close()
         sound.terminate()
         self.finished.emit()
-
-    def t_startAtValt_end(self):
-        # find what time on the new wave the y-val = valAt_t_end
-        tAt_t_end = self.t_end * self.currFreq / self.freq
-        #tAt_t_end = (2 * np.pi * self.currFreq * self.t_end)/(2 * np.pi * self.freq)
-        return tAt_t_end
 
     def changeFreq(self, newFreq):
         self.freq = round(float(newFreq), 0)
