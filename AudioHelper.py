@@ -65,6 +65,9 @@ main_win.txt_aud_gen_vol.textChanged.connect(audio_gen.changeVol)
 
 main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
 
+main_win.sig_assignNewOutputIndex.connect(audio_gen.changeOutputIndex)
+main_win.sig_assignNewInputIndex.connect(mic_reader.changeInputIndex)
+
 mic_reader.sig_newdata.connect(audio_ana.analyze)                 # Analyze mic data when new data is available
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available
 
