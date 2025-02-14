@@ -89,10 +89,12 @@ class SetupWindow(QDialog):
     def ok_click(self):
         print("ok clicked")
         for i in range(0, self.numDevices):
-            if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                self.newOutputIndex = i
-            elif self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                self.newInputIndex = i
+            if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
+                if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                    self.newOutputIndex = i
+            elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
+                if self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                    self.newInputIndex = i
 
         self.win.newOutput(self.newOutputIndex)
         self.win.newInput(self.newInputIndex)
