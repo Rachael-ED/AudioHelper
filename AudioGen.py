@@ -89,7 +89,7 @@ class AudioGen(QObject):
             # Otherwise, Generate Output
             else:
                 # Start with Tone of Unit Amplitude
-                if self.mode == "Single Tone":
+                if (self.mode == "Single Tone") or (self.mode == "Sweep"):
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
@@ -97,12 +97,10 @@ class AudioGen(QObject):
                     self.t_end = self.t_start + (self.numSamples / self.rate)
                     time_array = np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)
 
-                    # print(self.currFreq)
                     # equation: y = volume * sin(2 * pi * freq * time)
                     # np.linspace(start, stop, num samples, don't include last sample)
                     pitch_array = np.sin(2 * np.pi * self.currFreq * time_array)
 
-                    ###pitch = (self.currVol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
                 elif self.mode == "Noise":
                     pitch_array = (self.currVol * np.random.rand(self.numSamples)).astype(np.float32)
 
@@ -125,33 +123,40 @@ class AudioGen(QObject):
         self.finished.emit()
 
     def changeFreq(self, newFreq):
-        if re.search('^\d+(\.\d+)?', newFreq):
+        if re.search('^\d+(\.\d+)?$', newFreq):
             newFreq = float(newFreq)   # Translate string to number
             if newFreq <= C_FREQ_MIN:
                 self.freq = C_FREQ_MIN
-                logging.info(f"AudioGen freq = {self.freq}Hz = MIN")
+                #logging.info(f"AudioGen freq = {self.freq}Hz = MIN")
             elif newFreq >= C_FREQ_MAX:
                 self.freq = C_FREQ_MAX
-                logging.info(f"AudioGen freq = {self.freq}Hz = MAX")
+                #logging.info(f"AudioGen freq = {self.freq}Hz = MAX")
             else:
                 self.freq = newFreq
-                logging.info(f"AudioGen freq = {self.freq}Hz")
+                #logging.info(f"AudioGen freq = {self.freq}Hz")
 
     def changeVol(self, newVolDB):
-        if re.search('^[+-]?\d+(\.\d+)?', newVolDB):
+        if re.search('^[+-]?\d+(\.\d+)?$', newVolDB):
             newVolDB = float(newVolDB)   # Translate string to number
             if (newVolDB >= C_VOL_MAX_DB):
                 self.vol = 1
-                logging.info(f"AudioGen volume = 1.0 = 0dB = MAX")
+                #logging.info(f"AudioGen volume = 1.0 = 0dB = MAX")
             elif (newVolDB <= C_VOL_MIN_DB):
                 self.vol = 0
-                logging.info(f"AudioGen volume = 0.0 = OFF")
+                #logging.info(f"AudioGen volume = 0.0 = OFF")
             else:
                 self.vol = float(10**(newVolDB/20))
-                logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
+                #logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
 
     def changeMode(self, newMode):
         self.mode = newMode
+
+    def playTone(self, playFreq):
+        if (playFreq < C_FREQ_MIN) or (playFreq > C_FREQ_MAX):
+            self._audio_on = False
+        else:
+            self.freq = playFreq
+            self._audio_on = True
 
 # ==============================================================================
 # MODULE TESTBENCH
