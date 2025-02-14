@@ -21,6 +21,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 from ui_AudioHelperGUI import Ui_ui_AudioHelperGUI
 
 import BufferManager as BufMan
+import pyaudio as pa
 
 matplotlib.use('Qt5Agg')
 
@@ -43,6 +44,68 @@ C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
 
 # ==============================================================================
+# CLASS: SETUP WINDOW
+#
+class SetupWindow(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.initFunction()
+
+    def initFunction(self):
+        self.inputs = QComboBox()
+        self.outputs = QComboBox()
+
+        # instantiate PyAudio
+        self.p = pa.PyAudio()
+        # find number of devices (input and output)
+        self.numDevices = self.p.get_device_count()
+
+        for i in range(0, self.numDevices):
+            if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
+                self.outputs.addItem(self.p.get_device_info_by_index(i).get('name'))
+            elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
+                self.inputs.addItem(self.p.get_device_info_by_index(i).get('name'))
+
+        # label inputs and outputs
+        inputLabel = QLabel("Select Input:")
+        outputLabel = QLabel("Select Ouptut:")
+
+        # Add cancel and Save buttons
+        options = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+
+        # Show all the buttons
+        layout = QGridLayout()
+        layout.addWidget(inputLabel, 0, 1)
+        layout.addWidget(self.inputs, 1, 1)
+        layout.addWidget(outputLabel, 2, 1)
+        layout.addWidget(self.outputs, 3, 1)
+        layout.addWidget(options, 4, 1)
+        self.setLayout(layout)
+
+        # Connect buttons
+        options.accepted.connect(self.ok_click)
+        options.rejected.connect(self.cancel_click)
+
+    def ok_click(self):
+        print("ok clicked")
+        for i in range(0, self.numDevices):
+            if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                self.newOutputIndex = i
+            elif self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                self.newInputIndex = i
+
+        self.win.newOutput(self.newOutputIndex)
+        self.win.newInput(self.newInputIndex)
+        self.close()
+
+
+    def cancel_click(self):
+        self.close()
+
+    def closeEvent(self, event):
+        print("closing")
+
+# ==============================================================================
 # CLASS: MAIN WINDOW
 #
 class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
@@ -63,6 +126,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     sig_audio_gen_enable = pyqtSignal(bool)
     sig_audio_ana_sweep = pyqtSignal(bool)
     sig_mic_reader_enable = pyqtSignal(bool)
+    sig_assignNewOutputIndex = pyqtSignal(int)
+    sig_assignNewInputIndex = pyqtSignal(int)
 
     # ----------------------------------------------------------------------
     # Initialization & Termination
@@ -141,6 +206,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
 
+        self.btn_setup.clicked.connect(self.setup_btn_click)
+
     def closeEvent(self, event):
         logging.info("Main window will close in 1 second...")
         self.sig_closing.emit()
@@ -150,6 +217,20 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     # ----------------------------------------------------------------------
     # AudioGen Widgets
     #
+
+    def setup_btn_click(self):
+        setupWin = SetupWindow()
+        setupWin.win = self
+        setupWin.exec()
+
+
+    def newOutput(self, newOutputIndex):
+        logging.info(f"in new output index {newOutputIndex}")
+        self.sig_assignNewOutputIndex.emit(newOutputIndex)
+
+    def newInput(self, newInputIndex):
+        self.sig_assignNewInputIndex.emit(newInputIndex)
+
     def btn_aud_gen_enable_click(self):
         if self.btn_aud_gen_enable.text() == "Stop":
             logging.info("Telling AudioGen to turn off")

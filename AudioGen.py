@@ -52,6 +52,18 @@ class AudioGen(QObject):
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
         self.currFreq = freq
+        self._reopen_stream = False
+
+        # instantiate PyAudio
+        p = pa.PyAudio()
+        # find number of devices (input and output)
+        numDevices = p.get_device_count()
+
+        for i in range(0, numDevices):
+            if p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
+                self.outputIndex = i
+                logging.info(f"Default output: {p.get_device_info_by_index(i).get('name')}")
+                break
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -77,6 +89,17 @@ class AudioGen(QObject):
             #     If the volume changes, we'll bleed that out over the course of the buffer
             #     to avoid audible pops when changing the volume
             end_vol = self.vol
+
+            # if the output device index is changed, the stream needs to be reopened
+            if self._reopen_stream:
+                # instantiate PyAudio
+                sound = pa.PyAudio()
+                # set up a stream
+                # output_device_index: For Rachael's MacBook Pro, headphones = 1, speakers = 3
+                stream = sound.open(format=self.format, channels=self.channels, rate=self.rate, output=True,
+                                    output_device_index=self.outputIndex, frames_per_buffer=self.framesPerBuffer)
+                self._reopen_stream = False
+
             if not self._audio_on:
                 end_vol = 0
 
@@ -157,6 +180,11 @@ class AudioGen(QObject):
         else:
             self.freq = playFreq
             self._audio_on = True
+
+    def changeOutputIndex(self, newOutputIndex):
+        self.outputIndex = newOutputIndex
+        self._reopen_stream = True
+        logging.info(f"output index: {newOutputIndex}")
 
 # ==============================================================================
 # MODULE TESTBENCH

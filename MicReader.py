@@ -37,7 +37,19 @@ class MicReader(QObject):
         self.rate = rate
         self.framesPerBuffer = 16384     # i.e. 2^14
         #self.inputIndex = 1     # For Rachael's MacBook Pro WITH headphones, computer mic = 2, else mic = 1
-        self.inputIndex = 4     # For Fahthar's MacBook Pro MacBook mic = 2
+        #self.inputIndex = 2     # For Fahthar's MacBook Pro MacBook mic = 2
+        self._reopen_stream = False
+
+        # instantiate PyAudio
+        p = pa.PyAudio()
+        # find number of devices (input and output)
+        numDevices = p.get_device_count()
+
+        for i in range(0, numDevices):
+            if p.get_device_info_by_index(i).get('maxInputChannels') != 0:
+                self.inputIndex = i
+                logging.info(f"Default input: {p.get_device_info_by_index(i).get('name')}")
+                break
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -60,6 +72,14 @@ class MicReader(QObject):
         t = np.linspace(start=0, stop=(self.framesPerBuffer - 1)/self.rate, num=self.framesPerBuffer).astype(np.float32)
         while not self._stop_requested:
 
+            if self._reopen_stream:
+                # instantiate PyAudio
+                micInput = pa.PyAudio()
+                # set up a stream
+                stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True,
+                                       input_device_index=self.inputIndex, frames_per_buffer=self.framesPerBuffer)
+                self._reopen_stream = False
+
             if self._audio_on:
                 data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
                 dataAsVoltage = np.frombuffer(data, dtype=np.float32)
@@ -76,6 +96,11 @@ class MicReader(QObject):
         micInput.terminate()
         self.finished.emit()
 
+
+    def changeInputIndex(self, newInputIndex):
+        self.inputIndex = newInputIndex
+        self._reopen_stream = True
+        logging.info(f"input index: {newInputIndex}")
 
 # ==============================================================================
 # MODULE TESTBENCH
