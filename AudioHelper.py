@@ -56,7 +56,7 @@ mic_reader.enable()
 # --- Make Window & AudioGen Connections ---
 # It seems that these need to be done before we move the AudioGen to its own thread.
 main_win.sig_audio_gen_enable.connect(audio_gen.enable)
-#main_win.sig_audio_ana_enable.connect(audio_ana.enable)
+main_win.sig_audio_ana_sweep.connect(audio_ana.sweep)
 main_win.sig_mic_reader_enable.connect(mic_reader.enable)
 
 #main_win.sig_changeFreq.connect(audio_gen.changeFreq)
@@ -64,6 +64,8 @@ main_win.txt_aud_gen_freq1.textChanged.connect(audio_gen.changeFreq)
 main_win.txt_aud_gen_vol.textChanged.connect(audio_gen.changeVol)
 
 main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
+
+audio_ana.sig_audio_gen_playtone.connect(audio_gen.playTone)
 
 mic_reader.sig_newdata.connect(audio_ana.analyze)                 # Analyze mic data when new data is available
 audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available

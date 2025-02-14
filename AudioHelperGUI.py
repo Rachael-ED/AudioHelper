@@ -5,7 +5,6 @@ import sys
 import time
 import logging
 import random
-import re
 
 import numpy as np
 
@@ -62,7 +61,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     #
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_gen_enable = pyqtSignal(bool)
-    #sig_audio_ana_enable = pyqtSignal(bool)
+    sig_audio_ana_sweep = pyqtSignal(bool)
     sig_mic_reader_enable = pyqtSignal(bool)
 
     # ----------------------------------------------------------------------
@@ -156,10 +155,18 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             logging.info("Telling AudioGen to turn off")
             self.sig_audio_gen_enable.emit(False)
             self.btn_aud_gen_enable.setText("Play")
-        else:
+        elif self.btn_aud_gen_enable.text() == "Play":
             logging.info("Telling AudioGen to turn on")
             self.sig_audio_gen_enable.emit(True)
             self.btn_aud_gen_enable.setText("Stop")
+        elif self.btn_aud_gen_enable.text() == "Stop Sweep":
+            logging.info("Telling AudioAna to stop sweeping")
+            self.sig_audio_ana_sweep.emit(False)
+            self.btn_aud_gen_enable.setText("Sweep")
+        elif self.btn_aud_gen_enable.text() == "Sweep":
+            logging.info("Telling AudioAna to start sweeping")
+            self.sig_audio_ana_sweep.emit(True)
+            self.btn_aud_gen_enable.setText("Stop Sweep")
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
@@ -171,11 +178,28 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             val = self.sld_aud_gen_freq1.value()
             self.sld_aud_gen_freq2.setValue(val)
-        else:
+
+            self.btn_aud_gen_enable.setText("Play")
+
+            self.sig_audio_ana_sweep.emit(False)
+
+        elif mode == "Noise":
             self.lbl_aud_gen_freq2.setEnabled(True)
             self.sld_aud_gen_freq2.setEnabled(True)
             self.txt_aud_gen_freq2.setEnabled(True)
             self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.btn_aud_gen_enable.setText("Play")
+
+            self.sig_audio_ana_sweep.emit(False)
+
+        elif mode == "Sweep":
+            self.lbl_aud_gen_freq2.setEnabled(True)
+            self.sld_aud_gen_freq2.setEnabled(True)
+            self.txt_aud_gen_freq2.setEnabled(True)
+            self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.btn_aud_gen_enable.setText("Sweep")
 
     def sld_pos_to_freq(self, pos):
         freq = round(10**(pos/1000), 1)   # Hz
