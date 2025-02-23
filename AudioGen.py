@@ -9,6 +9,8 @@ import re
 import pyaudio as pa
 import numpy as np
 
+import BufferManager as BufMan
+
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
@@ -31,13 +33,29 @@ class AudioGen(QObject):
 
     finished = pyqtSignal()
 
+    # Signals for IPC
+    sig_ipc_guido = pyqtSignal(int)
+    sig_ipc_mic = pyqtSignal(int)
+    sig_ipc_ana = pyqtSignal(int)
+
     # Comment by Rachael
 
-    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_db, name="aud_gen"):
+    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_db, name="Gen"):
         super().__init__()
+
+        # Set Up Dictionary with IPC Signals for BufMan
+        ipc_dict = {       # Key: Receiver Name; Value: Signal for Message, connected to receiver's msgHandler()
+            "Guido": self.sig_ipc_guido,
+            "Mic": self.sig_ipc_mic,
+            "Ana": self.sig_ipc_ana
+        }
+
+        # Create Buffer Manager
+        self.name = name
+        self.buf_man = BufMan.BufferManager(name, ipc_dict)
+
         self._audio_on = False
         self._stop_requested = False
-        self.name = name
         self.mode = "Single Tone"
         self.format = format
         self.channels = channels
@@ -64,6 +82,16 @@ class AudioGen(QObject):
                 self.outputIndex = i
                 logging.info(f"Default output: {p.get_device_info_by_index(i).get('name')}")
                 break
+
+    # Handle Messages from Other Objects
+    def msgHandler(self, buf_id):
+        [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        if msg_type == "enable":
+            self.enable(msg_data)
+        elif msg_type == "play_tone":
+            self.playTone(msg_data)
+        else:
+            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
