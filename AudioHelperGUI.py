@@ -4,8 +4,6 @@
 import sys
 import time
 import logging
-import random
-import re
 
 import numpy as np
 
@@ -74,6 +72,8 @@ class SetupWindow(QDialog):
         # Add cancel and Save buttons
         options = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
+        self.inputs.setCurrentText(self.p.get_device_info_by_index(4).get('name'))
+
         # Show all the buttons
         layout = QGridLayout()
         layout.addWidget(inputLabel, 0, 1)
@@ -140,7 +140,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         # Create Buffer Manager
         self.buf_man = BufMan.BufferManager("AudioHelperGUI")
-        self.buf_id_list = []   # Temporary for testing
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
