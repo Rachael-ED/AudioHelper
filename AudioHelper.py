@@ -41,22 +41,43 @@ main_win.show()
 # --- Create AudioGen ---
 audio_gen_thread = QThread()
 audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ, VOL_DB)
-#audio_gen.enable()
 
 # --- Create AudioAnalyzer ---
 audio_ana_thread = QThread()
 audio_ana = AudAnaMdl.AudioAnalyzer()
-#audio_ana.enable()
 
 # --- Create MicReader ---
 mic_reader_thread = QThread()
 mic_reader = MicMdl.MicReader(FORMAT, CHANNELS, RATE)
 mic_reader.enable()
 
+# --- Generate Object List and Dictionary ---
+# These are useful for processing all the objects, as in connecting up all the signals
+obj_list = [main_win, audio_gen, mic_reader, audio_ana]
+name_to_obj_dict = {}    # Key: Object's name; Value: Object
+for obj in obj_list:
+    name_to_obj_dict[obj.name] = obj
+
+# --- Set Up Communication Between Objects ---
+# It seems that these need to be done before we move each object to its own thread.
+# Each participating object needs:
+#     a) A name property which uniquely identifies the sender/receiver
+# Each sender also needs:
+#     a) Instantiate a pyqtSignal(int) as class member data for each receiver it will talk to
+#     b) Instantiate a BufMan (instance member data is OK), passing it an IPC signal dictionary
+#        telling it which signal to use to talk to each receiver
+# Each receiver also needs:
+#     a) A msgHandler method which will process received messages
+for snd_obj in obj_list:
+    for rcv_name in snd_obj.buf_man.ipcReceivers():
+        if rcv_name in name_to_obj_dict:
+            rcv_obj = name_to_obj_dict[rcv_name]
+            ipc_sig = snd_obj.buf_man.ipcSignal(rcv_name)
+            ipc_sig.connect(rcv_obj.msgHandler)
+
 # --- Make Window & AudioGen Connections ---
 # It seems that these need to be done before we move the AudioGen to its own thread.
-main_win.sig_audio_gen_enable.connect(audio_gen.enable)
-#main_win.sig_audio_ana_enable.connect(audio_ana.enable)
+main_win.sig_audio_ana_sweep.connect(audio_ana.sweep)
 main_win.sig_mic_reader_enable.connect(mic_reader.enable)
 
 #main_win.sig_changeFreq.connect(audio_gen.changeFreq)
@@ -67,9 +88,6 @@ main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
 
 main_win.sig_assignNewOutputIndex.connect(audio_gen.changeOutputIndex)
 main_win.sig_assignNewInputIndex.connect(mic_reader.changeInputIndex)
-
-mic_reader.sig_newdata.connect(audio_ana.analyze)                 # Analyze mic data when new data is available
-audio_ana.sig_newdata.connect(main_win.update_plot)               # Update the plot when new data is available
 
 main_win.sig_closing.connect(audio_gen.stop)                      # When user closes main window, stop audio generator
 audio_gen.finished.connect(audio_ana.stop)                        # ... Once the generator is done, stop analyzer

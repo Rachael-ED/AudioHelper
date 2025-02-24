@@ -72,8 +72,6 @@ class SetupWindow(QDialog):
         # Add cancel and Save buttons
         options = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
 
-        self.inputs.setCurrentText(self.p.get_device_info_by_index(4).get('name'))
-
         # Show all the buttons
         layout = QGridLayout()
         layout.addWidget(inputLabel, 0, 1)
@@ -90,10 +88,12 @@ class SetupWindow(QDialog):
     def ok_click(self):
         print("ok clicked")
         for i in range(0, self.numDevices):
-            if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                self.newOutputIndex = i
-            elif self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                self.newInputIndex = i
+            if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
+                if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                    self.newOutputIndex = i
+            elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
+                if self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
+                    self.newInputIndex = i
 
         self.win.newOutput(self.newOutputIndex)
         self.win.newInput(self.newInputIndex)
@@ -124,22 +124,34 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     # Class Data
     #
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
-    sig_audio_gen_enable = pyqtSignal(bool)
-    #sig_audio_ana_enable = pyqtSignal(bool)
+    sig_audio_ana_sweep = pyqtSignal(bool)
     sig_mic_reader_enable = pyqtSignal(bool)
     sig_assignNewOutputIndex = pyqtSignal(int)
     sig_assignNewInputIndex = pyqtSignal(int)
 
+    # Signals for IPC
+    sig_ipc_gen = pyqtSignal(int)
+    sig_ipc_mic = pyqtSignal(int)
+    sig_ipc_ana = pyqtSignal(int)
+
     # ----------------------------------------------------------------------
     # Initialization & Termination
     #
-    def __init__(self):
+    def __init__(self, name="Guido"):
         # Call parent class' init
         super(QMainWindow, self).__init__()
         self.setupUi(self)
 
+        # Set Up Dictionary with IPC Signals for BufMan
+        ipc_dict = {       # Key: Receiver Name; Value: Signal for Message, connected to receiver's msgHandler()
+            "Gen": self.sig_ipc_gen,
+            "Mic": self.sig_ipc_mic,
+            "Ana": self.sig_ipc_ana
+        }
+
         # Create Buffer Manager
-        self.buf_man = BufMan.BufferManager("AudioHelperGUI")
+        self.name = name
+        self.buf_man = BufMan.BufferManager(name, ipc_dict)
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
@@ -208,11 +220,20 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         self.btn_setup.clicked.connect(self.setup_btn_click)
 
+        self.btn_aud_ana_cal.clicked.connect(self.btn_aud_ana_cal_click)
+
     def closeEvent(self, event):
         logging.info("Main window will close in 1 second...")
         self.sig_closing.emit()
         time.sleep(1)
         logging.info("Main window closing")
+
+    def msgHandler(self, buf_id):
+        [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        if msg_type == "plot_data":
+            self.update_plot(msg_data)
+        else:
+            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
     # ----------------------------------------------------------------------
     # AudioGen Widgets
@@ -223,6 +244,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         setupWin.win = self
         setupWin.exec()
 
+    def btn_aud_ana_cal_click(self):
+        logging.info(f"Clicked the Calibrate button")
+        self.buf_man.msgSend("Gen", "test_msg", "data to Gen")
+        self.buf_man.msgSend("Mic", "test_msg", "data to Mic")
+        self.buf_man.msgSend("Ana", "test_msg", "data to Ana")
 
     def newOutput(self, newOutputIndex):
         logging.info(f"in new output index {newOutputIndex}")
@@ -234,12 +260,20 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def btn_aud_gen_enable_click(self):
         if self.btn_aud_gen_enable.text() == "Stop":
             logging.info("Telling AudioGen to turn off")
-            self.sig_audio_gen_enable.emit(False)
+            self.buf_man.msgSend("Gen", "enable", False)
             self.btn_aud_gen_enable.setText("Play")
-        else:
+        elif self.btn_aud_gen_enable.text() == "Play":
             logging.info("Telling AudioGen to turn on")
-            self.sig_audio_gen_enable.emit(True)
+            self.buf_man.msgSend("Gen", "enable", True)
             self.btn_aud_gen_enable.setText("Stop")
+        elif self.btn_aud_gen_enable.text() == "Stop Sweep":
+            logging.info("Telling AudioAna to stop sweeping")
+            self.sig_audio_ana_sweep.emit(False)
+            self.btn_aud_gen_enable.setText("Sweep")
+        elif self.btn_aud_gen_enable.text() == "Sweep":
+            logging.info("Telling AudioAna to start sweeping")
+            self.sig_audio_ana_sweep.emit(True)
+            self.btn_aud_gen_enable.setText("Stop Sweep")
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
@@ -251,11 +285,28 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             val = self.sld_aud_gen_freq1.value()
             self.sld_aud_gen_freq2.setValue(val)
-        else:
+
+            self.btn_aud_gen_enable.setText("Play")
+
+            self.sig_audio_ana_sweep.emit(False)
+
+        elif mode == "Noise":
             self.lbl_aud_gen_freq2.setEnabled(True)
             self.sld_aud_gen_freq2.setEnabled(True)
             self.txt_aud_gen_freq2.setEnabled(True)
             self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.btn_aud_gen_enable.setText("Play")
+
+            self.sig_audio_ana_sweep.emit(False)
+
+        elif mode == "Sweep":
+            self.lbl_aud_gen_freq2.setEnabled(True)
+            self.sld_aud_gen_freq2.setEnabled(True)
+            self.txt_aud_gen_freq2.setEnabled(True)
+            self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.btn_aud_gen_enable.setText("Sweep")
 
     def sld_pos_to_freq(self, pos):
         freq = round(10**(pos/1000), 1)   # Hz
@@ -375,9 +426,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.sig_mic_reader_enable.emit(True)
             self.btn_aud_ana_enable.setText("Freeze")
 
-    def update_plot(self, buf_id):
+    #OLD#def update_plot(self, buf_id):
+    def update_plot(self, spec_buf):
         # Retrieve Buffer to Plot
-        [name, freq_list, ampl_list] = self.buf_man.free(buf_id)
+        #OLD#[name, freq_list, ampl_list] = self.buf_man.free(buf_id)
+        [name, freq_list, ampl_list] = spec_buf
 
         # Remove DC element
         freq_list = np.delete(freq_list,0)

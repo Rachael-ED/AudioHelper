@@ -9,6 +9,8 @@ import re
 import pyaudio as pa
 import numpy as np
 
+import BufferManager as BufMan
+
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
@@ -31,13 +33,29 @@ class AudioGen(QObject):
 
     finished = pyqtSignal()
 
+    # Signals for IPC
+    sig_ipc_guido = pyqtSignal(int)
+    sig_ipc_mic = pyqtSignal(int)
+    sig_ipc_ana = pyqtSignal(int)
+
     # Comment by Rachael
 
-    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_db, name="aud_gen"):
+    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_db, name="Gen"):
         super().__init__()
+
+        # Set Up Dictionary with IPC Signals for BufMan
+        ipc_dict = {       # Key: Receiver Name; Value: Signal for Message, connected to receiver's msgHandler()
+            "Guido": self.sig_ipc_guido,
+            "Mic": self.sig_ipc_mic,
+            "Ana": self.sig_ipc_ana
+        }
+
+        # Create Buffer Manager
+        self.name = name
+        self.buf_man = BufMan.BufferManager(name, ipc_dict)
+
         self._audio_on = False
         self._stop_requested = False
-        self.name = name
         self.mode = "Single Tone"
         self.format = format
         self.channels = channels
@@ -47,7 +65,7 @@ class AudioGen(QObject):
         self.currVol = 0                     # Start at no volume
         self.vol = 10**(vol_db/20)           # ... and ramp to target when enabled
         #self.outputIndex = 2  # for Rachael WITH headphones, 1 = headphones, 3 = speakers, else speaker = 2
-        #self.outputIndex = 1  # for Fahthar, 0 = monitor, 3 = MacBook Pro
+        self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
@@ -64,6 +82,16 @@ class AudioGen(QObject):
                 self.outputIndex = i
                 logging.info(f"Default output: {p.get_device_info_by_index(i).get('name')}")
                 break
+
+    # Handle Messages from Other Objects
+    def msgHandler(self, buf_id):
+        [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        if msg_type == "enable":
+            self.enable(msg_data)
+        elif msg_type == "play_tone":
+            self.playTone(msg_data)
+        else:
+            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -112,7 +140,7 @@ class AudioGen(QObject):
             # Otherwise, Generate Output
             else:
                 # Start with Tone of Unit Amplitude
-                if self.mode == "Single Tone":
+                if (self.mode == "Single Tone") or (self.mode == "Sweep"):
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
@@ -120,12 +148,10 @@ class AudioGen(QObject):
                     self.t_end = self.t_start + (self.numSamples / self.rate)
                     time_array = np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)
 
-                    # print(self.currFreq)
                     # equation: y = volume * sin(2 * pi * freq * time)
                     # np.linspace(start, stop, num samples, don't include last sample)
                     pitch_array = np.sin(2 * np.pi * self.currFreq * time_array)
 
-                    ###pitch = (self.currVol * np.sin(2 * np.pi * self.currFreq * (np.linspace(start=self.t_start, stop=self.t_end, num=self.numSamples, endpoint=False)))).astype(np.float32)
                 elif self.mode == "Noise":
                     pitch_array = (self.currVol * np.random.rand(self.numSamples)).astype(np.float32)
 
@@ -148,33 +174,40 @@ class AudioGen(QObject):
         self.finished.emit()
 
     def changeFreq(self, newFreq):
-        if re.search('^\d+(\.\d+)?', newFreq):
+        if re.search('^\d+(\.\d+)?$', newFreq):
             newFreq = float(newFreq)   # Translate string to number
             if newFreq <= C_FREQ_MIN:
                 self.freq = C_FREQ_MIN
-                logging.info(f"AudioGen freq = {self.freq}Hz = MIN")
+                #logging.info(f"AudioGen freq = {self.freq}Hz = MIN")
             elif newFreq >= C_FREQ_MAX:
                 self.freq = C_FREQ_MAX
-                logging.info(f"AudioGen freq = {self.freq}Hz = MAX")
+                #logging.info(f"AudioGen freq = {self.freq}Hz = MAX")
             else:
                 self.freq = newFreq
-                logging.info(f"AudioGen freq = {self.freq}Hz")
+                #logging.info(f"AudioGen freq = {self.freq}Hz")
 
     def changeVol(self, newVolDB):
-        if re.search('^[+-]?\d+(\.\d+)?', newVolDB):
+        if re.search('^[+-]?\d+(\.\d+)?$', newVolDB):
             newVolDB = float(newVolDB)   # Translate string to number
             if (newVolDB >= C_VOL_MAX_DB):
                 self.vol = 1
-                logging.info(f"AudioGen volume = 1.0 = 0dB = MAX")
+                #logging.info(f"AudioGen volume = 1.0 = 0dB = MAX")
             elif (newVolDB <= C_VOL_MIN_DB):
                 self.vol = 0
-                logging.info(f"AudioGen volume = 0.0 = OFF")
+                #logging.info(f"AudioGen volume = 0.0 = OFF")
             else:
                 self.vol = float(10**(newVolDB/20))
-                logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
+                #logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
 
     def changeMode(self, newMode):
         self.mode = newMode
+
+    def playTone(self, playFreq):
+        if (playFreq < C_FREQ_MIN) or (playFreq > C_FREQ_MAX):
+            self._audio_on = False
+        else:
+            self.freq = playFreq
+            self._audio_on = True
 
     def changeOutputIndex(self, newOutputIndex):
         self.outputIndex = newOutputIndex

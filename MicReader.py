@@ -10,6 +10,8 @@ import BufferManager as BufMan
 
 import numpy as np
 import pyaudio as pa
+import BufferManager as BufMan
+
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -22,15 +24,29 @@ class MicReader(QObject):
             QObject     - Allows object to be assigned to QThread to run in the background.
     """
 
-    sig_newdata = pyqtSignal(int)
     finished = pyqtSignal()
 
-    def __init__(self, format, channels, rate, name="mic_inp"):
+    # Signals for IPC
+    sig_ipc_gen = pyqtSignal(int)
+    sig_ipc_guido = pyqtSignal(int)
+    sig_ipc_ana = pyqtSignal(int)
+
+    def __init__(self, format, channels, rate, name="Mic"):
         super().__init__()
+
+        # Set Up Dictionary with IPC Signals for BufMan
+        ipc_dict = {       # Key: Receiver Name; Value: Signal for Message, connected to receiver's msgHandler()
+            "Gen": self.sig_ipc_gen,
+            "Guido": self.sig_ipc_guido,
+            "Ana": self.sig_ipc_ana
+        }
+
+        # Create Buffer Manager
+        self.name = name
+        self.buf_man = BufMan.BufferManager(name, ipc_dict)
+
         self._audio_on = False
         self._stop_requested = False
-        self.name = name
-        self.buf_man = BufMan.BufferManager("MicInput")
         # --- FROM RACHAEL'S CODE ---
         self.format = format
         self.channels = channels
@@ -50,6 +66,10 @@ class MicReader(QObject):
                 self.inputIndex = i
                 logging.info(f"Default input: {p.get_device_info_by_index(i).get('name')}")
                 break
+
+    def msgHandler(self, buf_id):
+        [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
@@ -84,8 +104,7 @@ class MicReader(QObject):
                 data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
                 dataAsVoltage = np.frombuffer(data, dtype=np.float32)
                 voltageAndTime = [t, dataAsVoltage]
-                buf_id = self.buf_man.alloc(voltageAndTime)
-                self.sig_newdata.emit(buf_id)
+                self.buf_man.msgSend("Ana", "mic_data", voltageAndTime)
             else:
                 time.sleep(1)
 

@@ -5,12 +5,20 @@ from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 import threading
 import time
 import logging
+import re
 
 import BufferManager as BufMan
 
 import numpy as np
 from scipy.fft import rfft, rfftfreq
 
+# ==============================================================================
+# CONSTANTS AND GLOBALS
+#
+C_FREQ_MAX = 20000
+C_FREQ_MIN = 50
+
+C_SWEEP_DWELL_DUR = 0.5    # Time for each sweep tone [s]
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -23,21 +31,72 @@ class AudioAnalyzer(QObject):
             QObject     - Allows object to be assigned to QThread to run in the background.
     """
 
-    sig_newdata = pyqtSignal(int)
     finished = pyqtSignal()
 
-    def __init__(self, name="aud_ana"):
+    # Signals for IPC
+    sig_ipc_gen = pyqtSignal(int)
+    sig_ipc_mic = pyqtSignal(int)
+    sig_ipc_guido = pyqtSignal(int)
+
+    def __init__(self, name="Ana"):
         super().__init__()
-        self._audio_on = False
-        self._stop_requested = False
+
+        # Set Up Dictionary with IPC Signals for BufMan
+        ipc_dict = {       # Key: Receiver Name; Value: Signal for Message, connected to receiver's msgHandler()
+            "Gen": self.sig_ipc_gen,
+            "Mic": self.sig_ipc_mic,
+            "Guido": self.sig_ipc_guido
+        }
+
+        # Create Buffer Manager
         self.name = name
-        self.buf_man = BufMan.BufferManager("AudioAnalyzer")
+        self.buf_man = BufMan.BufferManager(name, ipc_dict)
+
+        self.sweep_on = False
+        self.sweep_running = False
+        self._stop_requested = False
+        self.start_freq = C_FREQ_MIN
+        self.stop_freq = C_FREQ_MAX
+        self.sweep_points = 100
         self.hist_dur = 3      # Length [seconds] of history buffer
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
-    def enable(self, audio_on=True):
-        self._audio_on = audio_on
-        logging.info(f"AudioAnalyzer enable = {audio_on}")
+    def msgHandler(self, buf_id):
+        [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        if msg_type == "mic_data":
+            self.analyze(msg_data)
+        else:
+            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+
+    def sweep(self, sweepOn=True):
+        self.sweep_on = sweepOn
+        logging.info(f"AudioAnalyzer sweep = {sweepOn}")
+
+    def changeStartFreq(self, newFreq):
+        if re.search('^\d+(\.\d+)?$', newFreq):
+            newFreq = float(newFreq)   # Translate string to number
+            if newFreq <= C_FREQ_MIN:
+                self.start_freq = C_FREQ_MIN
+                #logging.info(f"AudioAna start_freq = {self.start_freq}Hz = MIN")
+            elif newFreq >= C_FREQ_MAX:
+                self.start_freq = C_FREQ_MAX
+                #logging.info(f"AudioAna start_freq = {self.start_freq}Hz = MAX")
+            else:
+                self.start_freq = newFreq
+                #logging.info(f"AudioAna start_freq = {self.start_freq}Hz")
+
+    def changeStopFreq(self, newFreq):
+        if re.search('^\d+(\.\d+)?$', newFreq):
+            newFreq = float(newFreq)   # Translate string to number
+            if newFreq <= C_FREQ_MIN:
+                self.stop_freq = C_FREQ_MIN
+                #logging.info(f"AudioAna stop_freq = {self.stop_freq}Hz = MIN")
+            elif newFreq >= C_FREQ_MAX:
+                self.stop_freq = C_FREQ_MAX
+                #logging.info(f"AudioAna stop_freq = {self.stop_freq}Hz = MAX")
+            else:
+                self.stop_freq = newFreq
+                #logging.info(f"AudioAna stop_freq = {self.stop_freq}Hz")
 
     def stop(self):
         logging.info("AudioAnalyzer stop requested")
@@ -61,9 +120,9 @@ class AudioAnalyzer(QObject):
         self.hist_clean()
         self.hist_list.append([time.monotonic(), freq_list, ampl_list])
 
-    def analyze(self, mic_buf_id):
+    def analyze(self, voltageAndTime):
         # Retrieve buffer with mic waveform
-        [time_list, volt_list] = self.buf_man.free(mic_buf_id)
+        [time_list, volt_list] = voltageAndTime
 
         num_samp = len(volt_list)               # Number of audio samples
         t_samp = time_list[1] - time_list[0]    # Audio sampling period
@@ -78,8 +137,7 @@ class AudioAnalyzer(QObject):
 
         # Send Amplitude Spectrum to Guido
         spec_buf = ["meas", freq_list, ampl_list]
-        spec_buf_id = self.buf_man.alloc(spec_buf)
-        self.sig_newdata.emit(spec_buf_id)
+        self.buf_man.msgSend("Guido", "plot_data", spec_buf)
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
         # Calc Average Amplitude Over History Buffer
@@ -111,21 +169,52 @@ class AudioAnalyzer(QObject):
 
         # Send Average Amplitude to Guido
         spec_buf = ["avg", freq_list, avg_ampl_list]
-        spec_buf_id = self.buf_man.alloc(spec_buf)
-        self.sig_newdata.emit(spec_buf_id)
+        self.buf_man.msgSend("Guido", "plot_data", spec_buf)
 
     def run(self):
         logging.info("AudioAnalyzer started")
         self._stop_requested = False
         it_cnt = 0
+        sweep_freq = 0
+        sweep_freq_mult = 0
+        next_it_time = time.monotonic()
         while not self._stop_requested:
-            it_cnt += 1
-            if self._audio_on:
-                logging.info(f"{self.name}({it_cnt:02d}): AudioAnalyzer is running.")
-            time.sleep(1)
+            # --- Wait for Next Iteration ---
+            sleep_dur = next_it_time - time.monotonic()
+            if sleep_dur > 0:
+                time.sleep(sleep_dur)
+            next_it_time = next_it_time + C_SWEEP_DWELL_DUR
+
+            # --- Run the Sweep ---
+            if self.sweep_on:
+                # --- Get Sweep Started ---
+                if not self.sweep_running:
+                    logging.info(f"{self.name}: AudioAnalyzer sweep started.")
+                    self.sweep_running = True
+                    if self.start_freq > self.stop_freq:
+                        (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
+                    sweep_freq = self.start_freq
+                    sweep_freq_mult = (self.stop_freq / self.start_freq) ** (1/(self.sweep_points-1))
+
+                # --- Generate Sweep Tone ---
+                logging.info(f"{self.name}: AudioAnalyzer sweep generating {sweep_freq}Hz.")
+                self.buf_man.msgSend("Gen", "play_tone", sweep_freq)
+
+                # --- Determine Next Sweep Tone ---
+                # When we're done, we'll generate 0, which stops Gen
+                sweep_freq = sweep_freq * sweep_freq_mult
+                if sweep_freq > self.stop_freq:
+                    sweep_freq = 0
+                    logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
+
+            # --- Stop the Sweep ---
+            elif self.sweep_running:
+                logging.info(f"{self.name}: AudioAnalyzer sweep stopped.")
+                self.sweep_running = False
+                self.buf_man.msgSend("Gen", "play_tone", 0)    # Turn off Gen
+
         logging.info("AudioAnalyzer finished")
         self.finished.emit()
-
 
 # ==============================================================================
 # MODULE TESTBENCH
