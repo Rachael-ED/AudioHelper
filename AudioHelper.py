@@ -22,8 +22,6 @@ FORMAT = pa.paFloat32
 CHANNELS = 1
 RATE = 44100
 FRAMES_PER_BUFFER = 1024
-FREQ = 440
-VOL_DB = -12
 
 # ==============================================================================
 # MAIN PROGRAM
@@ -40,7 +38,7 @@ main_win.show()
 
 # --- Create AudioGen ---
 audio_gen_thread = QThread()
-audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER, FREQ, VOL_DB)
+audio_gen = AudGenMdl.AudioGen(FORMAT, CHANNELS, RATE, FRAMES_PER_BUFFER)
 
 # --- Create AudioAnalyzer ---
 audio_ana_thread = QThread()

@@ -71,6 +71,10 @@ class AudioAnalyzer(QObject):
             self.analyze(msg_data)
         elif msg_type == "sweep":
             self.sweep(msg_data)
+        elif msg_type == "change_start_freq":
+            self.changeStartFreq(msg_data)
+        elif msg_type == "change_stop_freq":
+            self.changeStopFreq(msg_data)
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -212,9 +216,11 @@ class AudioAnalyzer(QObject):
                 # --- Determine Next Sweep Tone ---
                 # When we're done, we'll generate 0, which stops Gen
                 sweep_freq = sweep_freq * sweep_freq_mult
-                if sweep_freq > self.stop_freq:
+                if sweep_freq >= self.stop_freq:
                     sweep_freq = 0
                     logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
+                    self.sweep(False)
+                    self.buf_man.msgSend("Guido", "sweep_finished", None)
 
             # --- Stop the Sweep ---
             elif self.sweep_running:

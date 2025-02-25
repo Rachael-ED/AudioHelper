@@ -270,6 +270,9 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.defOutput = msg_data
         elif msg_type == "default_input":
             self.defInput = msg_data
+        elif msg_type == "sweep_finished":
+            logging.info("AudioAna says Sweep Finished")
+            self.btn_aud_gen_enable.setText("Sweep")
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -317,6 +320,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         elif self.btn_aud_gen_enable.text() == "Sweep":
             logging.info("Telling AudioAna to start sweeping")
             self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            self.buf_man.msgSend("Ana", "change_start_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq2.text())
             self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
 

@@ -40,7 +40,7 @@ class AudioGen(QObject):
 
     # Comment by Rachael
 
-    def __init__(self, format, channels, rate, framesPerBuffer, freq, vol_db, name="Gen"):
+    def __init__(self, format, channels, rate, framesPerBuffer, name="Gen"):
         super().__init__()
 
         # Set Up Dictionary with IPC Signals for BufMan
@@ -61,13 +61,13 @@ class AudioGen(QObject):
         self.channels = channels
         self.rate = rate                         # sampling rate = frame rate
         self.framesPerBuffer = framesPerBuffer   # 1 "frame" = 1 sample on all channels
-        self.freq = freq
-        self.currVol = 0                     # Start at no volume
-        self.vol = 10**(vol_db/20)           # ... and ramp to target when enabled
+        self.freq = 440
+        self.vol = 0
         self.numSamples = 1000
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
-        self.currFreq = freq
+        self.currFreq = self.freq
+        self.currVol = 0
         self._reopen_stream = False
 
         # instantiate PyAudio
