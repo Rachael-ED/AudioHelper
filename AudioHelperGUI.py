@@ -137,8 +137,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     # Class Data
     #
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
-    sig_audio_ana_sweep = pyqtSignal(bool)
-    sig_mic_reader_enable = pyqtSignal(bool)
 
     # Signals for IPC
     sig_ipc_gen = pyqtSignal(int)
@@ -238,12 +236,14 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         self.sld_aud_gen_freq1.sliderMoved.connect(self.sld_aud_gen_freq1_sliderMoved)
         self.txt_aud_gen_freq1.editingFinished.connect(self.txt_aud_gen_freq1_editingFinished)
+        self.txt_aud_gen_freq1.textChanged.connect(self.txt_aud_gen_freq1_textChanged)
 
         self.sld_aud_gen_freq2.sliderMoved.connect(self.sld_aud_gen_freq2_sliderMoved)
         self.txt_aud_gen_freq2.editingFinished.connect(self.txt_aud_gen_freq2_editingFinished)
 
         self.sld_aud_gen_vol.valueChanged.connect(self.sld_aud_gen_vol_valueChanged)
         self.txt_aud_gen_vol.editingFinished.connect(self.txt_aud_gen_vol_editingFinished)
+        self.txt_aud_gen_vol.textChanged.connect(self.txt_aud_gen_vol_textChanged)
 
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
@@ -300,17 +300,24 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             logging.info("Telling AudioGen to turn off")
             self.buf_man.msgSend("Gen", "enable", False)
             self.btn_aud_gen_enable.setText("Play")
+
         elif self.btn_aud_gen_enable.text() == "Play":
             logging.info("Telling AudioGen to turn on")
+            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Gen", "enable", True)
             self.btn_aud_gen_enable.setText("Stop")
+
         elif self.btn_aud_gen_enable.text() == "Stop Sweep":
             logging.info("Telling AudioAna to stop sweeping")
-            self.sig_audio_ana_sweep.emit(False)
+            self.buf_man.msgSend("Ana", "sweep", False)
             self.btn_aud_gen_enable.setText("Sweep")
+
         elif self.btn_aud_gen_enable.text() == "Sweep":
             logging.info("Telling AudioAna to start sweeping")
-            self.sig_audio_ana_sweep.emit(True)
+            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
@@ -326,7 +333,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.btn_aud_gen_enable.setText("Play")
 
-            self.sig_audio_ana_sweep.emit(False)
+            self.buf_man.msgSend("Gen", "silent", None)
+            self.buf_man.msgSend("Ana", "sweep", False)
 
         elif mode == "Noise":
             self.lbl_aud_gen_freq2.setEnabled(True)
@@ -336,7 +344,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.btn_aud_gen_enable.setText("Play")
 
-            self.sig_audio_ana_sweep.emit(False)
+            self.buf_man.msgSend("Gen", "silent", None)
+            self.buf_man.msgSend("Ana", "sweep", False)
 
         elif mode == "Sweep":
             self.lbl_aud_gen_freq2.setEnabled(True)
@@ -344,6 +353,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.txt_aud_gen_freq2.setEnabled(True)
             self.lbl_aud_gen_freq2_unit.setEnabled(True)
 
+            self.buf_man.msgSend("Gen", "silent", None)
             self.btn_aud_gen_enable.setText("Sweep")
 
     def sld_pos_to_freq(self, pos):
@@ -411,6 +421,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         elif not self.txt_aud_gen_freq2.isEnabled():
             self.txt_aud_gen_freq2.setText(f"{freq}")
             self.sld_aud_gen_freq2.setValue(pos)
+    def txt_aud_gen_freq1_textChanged(self, newFreq):
+        self.buf_man.msgSend("Gen", "change_freq", newFreq)
 
     def txt_aud_gen_freq2_editingFinished(self):
         orig_freq = float(self.txt_aud_gen_freq2.text())
@@ -450,6 +462,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.txt_aud_gen_vol.setText(f"{vol}")
         self.sld_aud_gen_vol.setValue(vol)
 
+    def txt_aud_gen_vol_textChanged(self, newVolDB):
+        self.buf_man.msgSend("Gen", "change_vol", newVolDB)
 
     # ----------------------------------------------------------------------
     # AudioAnalyzer Interface
@@ -457,11 +471,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def btn_aud_ana_enable_click(self):
         if self.btn_aud_ana_enable.text() == "Freeze":
             logging.info("Telling AudioAna to turn off")
-            self.sig_mic_reader_enable.emit(False)
+            self.buf_man.msgSend("Mic", "enable", False)
             self.btn_aud_ana_enable.setText("Analyze")
         else:
             logging.info("Telling AudioAna to turn on")
-            self.sig_mic_reader_enable.emit(True)
+            self.buf_man.msgSend("Mic", "enable", True)
             self.btn_aud_ana_enable.setText("Freeze")
 
     #OLD#def update_plot(self, buf_id):

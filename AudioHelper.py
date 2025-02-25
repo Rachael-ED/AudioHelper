@@ -75,19 +75,8 @@ for snd_obj in obj_list:
             ipc_sig = snd_obj.buf_man.ipcSignal(rcv_name)
             ipc_sig.connect(rcv_obj.msgHandler)
 
-# --- Make Window & AudioGen Connections ---
+# --- Connect Closing Signals ---
 # It seems that these need to be done before we move the AudioGen to its own thread.
-main_win.sig_audio_ana_sweep.connect(audio_ana.sweep)
-main_win.sig_mic_reader_enable.connect(mic_reader.enable)
-
-#main_win.sig_changeFreq.connect(audio_gen.changeFreq)
-main_win.txt_aud_gen_freq1.textChanged.connect(audio_gen.changeFreq)
-main_win.txt_aud_gen_vol.textChanged.connect(audio_gen.changeVol)
-
-main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
-
-
-
 main_win.sig_closing.connect(audio_gen.stop)                      # When user closes main window, stop audio generator
 audio_gen.finished.connect(audio_ana.stop)                        # ... Once the generator is done, stop analyzer
 audio_ana.finished.connect(mic_reader.stop)                       # ... Once the analyzer is done, stop mic reader

@@ -69,6 +69,8 @@ class AudioAnalyzer(QObject):
         # Process Message
         if msg_type == "mic_data":
             self.analyze(msg_data)
+        elif msg_type == "sweep":
+            self.sweep(msg_data)
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 

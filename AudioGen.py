@@ -92,8 +92,17 @@ class AudioGen(QObject):
             self.enable(msg_data)
         elif msg_type == "play_tone":
             self.playTone(msg_data)
+        elif msg_type == "silent":
+            self.enable(False)
+            self.playTone(False)
         elif msg_type == "change_output":
             self.changeOutputIndex(msg_data)
+        elif msg_type == "change_mode":
+            self.changeMode(msg_data)
+        elif msg_type == "change_freq":
+            self.changeFreq(msg_data)
+        elif msg_type == "change_vol":
+            self.changeVol(msg_data)
 
         elif msg_type == "REQ_cfg":
             ack_data = {

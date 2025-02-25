@@ -71,7 +71,9 @@ class MicReader(QObject):
         ack_data = None
 
         # Process Message
-        if msg_type == "change_input":
+        if msg_type == "enable":
+            self.enable(msg_data)
+        elif msg_type == "change_input":
             self.changeInputIndex(msg_data)
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
