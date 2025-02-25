@@ -48,7 +48,7 @@ C_FREQ_MIN = 50
 class SetupWindow(QDialog):
     def __init__(self):
         super().__init__()
-        self.initFunction()
+        #self.initFunction()
 
     def initFunction(self):
         self.inputs = QComboBox()
@@ -59,11 +59,25 @@ class SetupWindow(QDialog):
         # find number of devices (input and output)
         self.numDevices = self.p.get_device_count()
 
+        # start with -1 input and output options because the indices will start counting at 1
+        numOut = -1
+        numIn = -1
         for i in range(0, self.numDevices):
             if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
                 self.outputs.addItem(self.p.get_device_info_by_index(i).get('name'))
+                numOut = numOut + 1
+
+                # set the default combobox output option based on the output index currently in use
+                if self.p.get_device_info_by_index(i).get('name') == self.p.get_device_info_by_index(self.win.defOutput).get('name'):
+                    self.outputs.setCurrentIndex(numOut)
+
             elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
                 self.inputs.addItem(self.p.get_device_info_by_index(i).get('name'))
+                numIn = numIn + 1
+
+                # set the default combobox input option based on the input index currently in use
+                if self.p.get_device_info_by_index(i).get('name') == self.p.get_device_info_by_index(self.win.defInput).get('name'):
+                    self.inputs.setCurrentIndex(numIn)
 
         # label inputs and outputs
         inputLabel = QLabel("Select Input:")
@@ -86,17 +100,14 @@ class SetupWindow(QDialog):
         options.rejected.connect(self.cancel_click)
 
     def ok_click(self):
-        print("ok clicked")
         for i in range(0, self.numDevices):
             if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
                 if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                    self.newOutputIndex = i
+                    self.win.buf_man.msgSend("Gen", "change_output", i)
             elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
                 if self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
-                    self.newInputIndex = i
+                    self.win.buf_man.msgSend("Mic", "change_input", i)
 
-        self.win.newOutput(self.newOutputIndex)
-        self.win.newInput(self.newInputIndex)
         self.close()
 
 
@@ -104,7 +115,7 @@ class SetupWindow(QDialog):
         self.close()
 
     def closeEvent(self, event):
-        print("closing")
+        logging.info("closing")
 
 # ==============================================================================
 # CLASS: MAIN WINDOW
@@ -126,8 +137,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     sig_closing = pyqtSignal()     # Signal thrown when main window is about to close
     sig_audio_ana_sweep = pyqtSignal(bool)
     sig_mic_reader_enable = pyqtSignal(bool)
-    sig_assignNewOutputIndex = pyqtSignal(int)
-    sig_assignNewInputIndex = pyqtSignal(int)
 
     # Signals for IPC
     sig_ipc_gen = pyqtSignal(int)
@@ -152,6 +161,25 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Create Buffer Manager
         self.name = name
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
+
+        # instantiate PyAudio
+        p = pa.PyAudio()
+        # find number of devices (input and output)
+        numDevices = p.get_device_count()
+
+        # set the default output index in Guido
+        for i in range(0, numDevices):
+            if p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
+                self.defOutput = i
+                logging.info(f"Default output: {p.get_device_info_by_index(i).get('name')}")
+                break
+
+        # set the default input index in Guido
+        for i in range(0, numDevices):
+            if p.get_device_info_by_index(i).get('maxInputChannels') != 0:
+                self.defInput = i
+                logging.info(f"Default input: {p.get_device_info_by_index(i).get('name')}")
+                break
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
@@ -232,6 +260,10 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
         if msg_type == "plot_data":
             self.update_plot(msg_data)
+        elif msg_type == "default_output":
+            self.defOutput = msg_data
+        elif msg_type == "default_input":
+            self.defInput = msg_data
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -242,6 +274,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def setup_btn_click(self):
         setupWin = SetupWindow()
         setupWin.win = self
+        setupWin.initFunction()         # run the initFunction separately from __init__ so that setupWin.win exists for the function
         setupWin.exec()
 
     def btn_aud_ana_cal_click(self):
@@ -249,13 +282,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.buf_man.msgSend("Gen", "test_msg", "data to Gen")
         self.buf_man.msgSend("Mic", "test_msg", "data to Mic")
         self.buf_man.msgSend("Ana", "test_msg", "data to Ana")
-
-    def newOutput(self, newOutputIndex):
-        logging.info(f"in new output index {newOutputIndex}")
-        self.sig_assignNewOutputIndex.emit(newOutputIndex)
-
-    def newInput(self, newInputIndex):
-        self.sig_assignNewInputIndex.emit(newInputIndex)
 
     def btn_aud_gen_enable_click(self):
         if self.btn_aud_gen_enable.text() == "Stop":
