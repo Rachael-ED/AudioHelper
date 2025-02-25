@@ -68,8 +68,15 @@ class MicReader(QObject):
                 break
 
     def msgHandler(self, buf_id):
+        # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ack_data = None
+
+        # Process Message
         logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+
+        # Acknowledge/Release Message
+        self.buf_man.msgAcknowledge(buf_id, ack_data)
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on

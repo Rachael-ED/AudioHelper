@@ -62,11 +62,18 @@ class AudioAnalyzer(QObject):
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
     def msgHandler(self, buf_id):
+        # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ack_data = None
+
+        # Process Message
         if msg_type == "mic_data":
             self.analyze(msg_data)
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+
+        # Acknowledge/Release Message
+        self.buf_man.msgAcknowledge(buf_id, ack_data)
 
     def sweep(self, sweepOn=True):
         self.sweep_on = sweepOn

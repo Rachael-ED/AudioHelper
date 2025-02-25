@@ -22,6 +22,8 @@ from ui_AudioHelperGUI import Ui_ui_AudioHelperGUI
 import BufferManager as BufMan
 import pyaudio as pa
 
+from pprint import pformat
+
 matplotlib.use('Qt5Agg')
 
 # ==============================================================================
@@ -229,11 +231,18 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         logging.info("Main window closing")
 
     def msgHandler(self, buf_id):
+        # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ack_data = None
+
+        # Process Message
         if msg_type == "plot_data":
             self.update_plot(msg_data)
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+
+        # Acknowledge/Release Message
+        self.buf_man.msgAcknowledge(buf_id, ack_data)
 
     # ----------------------------------------------------------------------
     # AudioGen Widgets
@@ -249,6 +258,9 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.buf_man.msgSend("Gen", "test_msg", "data to Gen")
         self.buf_man.msgSend("Mic", "test_msg", "data to Mic")
         self.buf_man.msgSend("Ana", "test_msg", "data to Ana")
+
+        cfg_dict = self.buf_man.msgSend("Gen", "REQ_cfg")
+        logging.info(f"Current AudioGen Config:\n{pformat(cfg_dict)}")
 
     def newOutput(self, newOutputIndex):
         logging.info(f"in new output index {newOutputIndex}")

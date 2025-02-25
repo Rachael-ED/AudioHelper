@@ -85,13 +85,35 @@ class AudioGen(QObject):
 
     # Handle Messages from Other Objects
     def msgHandler(self, buf_id):
+        # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ack_data = None
+
+        # Process Message
         if msg_type == "enable":
             self.enable(msg_data)
         elif msg_type == "play_tone":
             self.playTone(msg_data)
+
+        elif msg_type == "REQ_cfg":
+            ack_data = {
+                "enable": self._audio_on,
+                "mode": self.mode,
+                "format": self.format,
+                "channels": self.channels,
+                "rate": self.rate,
+                "framesPerBuffer": self.framesPerBuffer ,
+                "freq" : self.freq,
+                "vol": self.vol,
+                "outputIndex": self.outputIndex,
+                "numSamples": self.numSamples
+            }
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+
+        # Acknowledge/Release Message
+        self.buf_man.msgAcknowledge(buf_id, ack_data)
 
     def enable(self, audio_on=True):
         self._audio_on = audio_on
