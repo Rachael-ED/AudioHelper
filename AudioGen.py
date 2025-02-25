@@ -64,8 +64,6 @@ class AudioGen(QObject):
         self.freq = freq
         self.currVol = 0                     # Start at no volume
         self.vol = 10**(vol_db/20)           # ... and ramp to target when enabled
-        #self.outputIndex = 2  # for Rachael WITH headphones, 1 = headphones, 3 = speakers, else speaker = 2
-        self.outputIndex = 0  # for Fahthar, 0 = monitor, 3 = MacBook Pro
         self.numSamples = 1000
         self.t_start = 0
         self.t_end = self.numSamples / self.rate
@@ -94,6 +92,8 @@ class AudioGen(QObject):
             self.enable(msg_data)
         elif msg_type == "play_tone":
             self.playTone(msg_data)
+        elif msg_type == "change_output":
+            self.changeOutputIndex(msg_data)
 
         elif msg_type == "REQ_cfg":
             ack_data = {
@@ -235,6 +235,7 @@ class AudioGen(QObject):
         self.outputIndex = newOutputIndex
         self._reopen_stream = True
         logging.info(f"output index: {newOutputIndex}")
+        self.buf_man.msgSend("Guido", "default_output", self.outputIndex)
 
 # ==============================================================================
 # MODULE TESTBENCH

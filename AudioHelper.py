@@ -86,8 +86,7 @@ main_win.txt_aud_gen_vol.textChanged.connect(audio_gen.changeVol)
 
 main_win.cmb_aud_gen_mode.currentTextChanged.connect(audio_gen.changeMode)
 
-main_win.sig_assignNewOutputIndex.connect(audio_gen.changeOutputIndex)
-main_win.sig_assignNewInputIndex.connect(mic_reader.changeInputIndex)
+
 
 main_win.sig_closing.connect(audio_gen.stop)                      # When user closes main window, stop audio generator
 audio_gen.finished.connect(audio_ana.stop)                        # ... Once the generator is done, stop analyzer

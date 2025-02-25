@@ -52,8 +52,6 @@ class MicReader(QObject):
         self.channels = channels
         self.rate = rate
         self.framesPerBuffer = 16384     # i.e. 2^14
-        #self.inputIndex = 1     # For Rachael's MacBook Pro WITH headphones, computer mic = 2, else mic = 1
-        #self.inputIndex = 2     # For Fahthar's MacBook Pro MacBook mic = 2
         self._reopen_stream = False
 
         # instantiate PyAudio
@@ -73,7 +71,10 @@ class MicReader(QObject):
         ack_data = None
 
         # Process Message
-        logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+        if msg_type == "change_input":
+            self.changeInputIndex(msg_data)
+        else:
+            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
         # Acknowledge/Release Message
         self.buf_man.msgAcknowledge(buf_id, ack_data)
@@ -127,6 +128,7 @@ class MicReader(QObject):
         self.inputIndex = newInputIndex
         self._reopen_stream = True
         logging.info(f"input index: {newInputIndex}")
+        self.buf_man.msgSend("Guido", "default_input", self.inputIndex)
 
 # ==============================================================================
 # MODULE TESTBENCH
