@@ -49,7 +49,6 @@
 # IMPORTS
 #
 from PyQt5.QtCore import QMutex, QSemaphore
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 import logging
 
 # ==============================================================================
@@ -178,6 +177,7 @@ class BufferManager:
 
         # Return Result
         [ack_msg_type, ack_name, ack_msg_data, ack_sem] = self.get(buf_id)
+        self.free(buf_id)
         return ack_msg_data
 
     def msgReceive(self, buf_id):

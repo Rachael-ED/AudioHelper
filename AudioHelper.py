@@ -3,14 +3,12 @@
 #
 import sys
 from PyQt5.Qt import *
-from PyQt5.QtCore import QObject, pyqtSignal
 import AudioHelperGUI as GuiMdl
 import AudioGen as AudGenMdl
 import AudioAnalyzer as AudAnaMdl
 import MicReader as MicMdl
 import logging
 import pyaudio as pa
-import numpy as np
 
 # ==============================================================================
 # CONSTANTS AND GLOBALS

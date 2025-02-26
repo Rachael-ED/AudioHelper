@@ -2,7 +2,6 @@
 # IMPORTS
 #
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
-import threading
 import time
 import logging
 import re
