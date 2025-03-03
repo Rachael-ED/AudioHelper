@@ -158,6 +158,9 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             "Ana": self.sig_ipc_ana
         }
 
+        # Set Up Dictionary with Plot Line Data
+        self.line_dict = {}
+
         # Create Buffer Manager
         self.name = name
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
@@ -202,21 +205,6 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax.set_yticks(np.arange(C_SPEC_MIN_DB, C_SPEC_MAX_DB, C_SPEC_GRID_DB))
         self.plt_ax.xaxis.set_tick_params(labelsize="small")
         self.plt_ax.yaxis.set_tick_params(labelsize="small")
-
-        # Create Plot for Latest Amplitude Measurement
-        self.plt_line_meas_freq = np.linspace(C_SPEC_MIN_FREQ, C_SPEC_MAX_FREQ, 16384)
-        self.plt_line_meas_ampl = np.array([0] * 16384)
-        plt_refs = self.plt_ax.plot(self.plt_line_meas_freq, self.plt_line_meas_ampl, label = 'Live')
-        self.plt_line_meas = plt_refs[0]
-
-        # Create Plot for Average Amplitude
-        self.plt_line_avg_freq = np.linspace(C_SPEC_MIN_FREQ, C_SPEC_MAX_FREQ, 16384)
-        self.plt_line_avg_ampl = np.array([0] * 16384)
-        plt_refs = self.plt_ax.plot(self.plt_line_avg_freq, self.plt_line_avg_ampl, label = "Average")
-        self.plt_line_avg = plt_refs[0]
-
-        # Add Legend
-        self.plt_ax.legend(fontsize="small")
 
         # Configure AudioGen Widgets
         self.txt_aud_gen_freq1.setValidator(QDoubleValidator())
@@ -265,7 +253,10 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         # Process Message
         if msg_type == "plot_data":
-            self.update_plot(msg_data)
+            [name, freq_list, ampl_list] = msg_data
+            self.update_plot(name, freq_list, ampl_list)
+        elif msg_type == "remove_plot":
+            self.remove_plot(msg_data)
         elif msg_type == "default_output":
             self.defOutput = msg_data
         elif msg_type == "default_input":
@@ -291,12 +282,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def btn_aud_ana_cal_click(self):
         logging.info(f"Clicked the Calibrate button")
-        self.buf_man.msgSend("Gen", "test_msg", "data to Gen")
-        self.buf_man.msgSend("Mic", "test_msg", "data to Mic")
-        self.buf_man.msgSend("Ana", "test_msg", "data to Ana")
-
-        cfg_dict = self.buf_man.msgSend("Gen", "REQ_cfg")
-        logging.info(f"Current AudioGen Config:\n{pformat(cfg_dict)}")
+        if self.btn_aud_ana_cal.text() == "Calibrate":
+            self.buf_man.msgSend("Ana", "apply_cal", "Avg")
+            self.btn_aud_ana_cal.setText("Clear Cal")
+        else:
+            self.buf_man.msgSend("Ana", "apply_cal", None)
+            self.btn_aud_ana_cal.setText("Calibrate")
 
     def btn_aud_gen_enable_click(self):
         if self.btn_aud_gen_enable.text() == "Stop":
@@ -483,12 +474,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.buf_man.msgSend("Mic", "enable", True)
             self.btn_aud_ana_enable.setText("Freeze")
 
-    #OLD#def update_plot(self, buf_id):
-    def update_plot(self, spec_buf):
-        # Retrieve Buffer to Plot
-        #OLD#[name, freq_list, ampl_list] = self.buf_man.free(buf_id)
-        [name, freq_list, ampl_list] = spec_buf
-
+    def update_plot(self, name, freq_list, ampl_list):
         # Remove DC element
         freq_list = np.delete(freq_list,0)
         ampl_list = np.delete(ampl_list,0)
@@ -498,21 +484,30 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         ampl_list = 20 * np.log10(ampl_list)                         # Translate to dB
         ampl_list = np.clip(ampl_list, C_SPEC_MIN_DB, C_SPEC_MAX_DB) # Limit to plot range
 
-        # Update Measurement Plot
-        if (name == "meas"):
-            self.plt_line_meas_freq = freq_list
-            self.plt_line_meas_ampl = ampl_list
-            self.plt_line_meas.set_data(self.plt_line_meas_freq, self.plt_line_meas_ampl)
-            self.plt_line_meas.figure.canvas.draw()
+        # Update Existing Plot Line
+        if name in self.line_dict.keys():
+            ###logging.info(f"Updating plot line: {name}")
+            line_obj = self.line_dict[name]["line_obj"]
+            line_obj.set_data(freq_list, ampl_list)
+            line_obj.figure.canvas.draw()
 
-        elif (name == "avg"):
-            self.plt_line_avg_freq = freq_list
-            self.plt_line_avg_ampl = ampl_list
-            self.plt_line_avg.set_data(self.plt_line_avg_freq, self.plt_line_avg_ampl)
-            self.plt_line_avg.figure.canvas.draw()
-
+        # Add New Plot Line
         else:
-            logging.info(f"ERROR: Invalid plot line to update ({name})")
+            ###logging.info(f"Adding plot line: {name}")
+            plt_refs = self.plt_ax.plot(freq_list, ampl_list, label = name)
+            self.line_dict[name] = {
+                "line_obj": plt_refs[0]     # Store Line2D object to reference layer
+            }
+            self.plt_ax.legend(fontsize="small")
+            plt_refs[0].figure.canvas.draw()
+
+    def remove_plot(self, name):
+        if name in self.line_dict.keys():
+            ###logging.info(f"Removing plot line: {name}")
+            if "line_obj" in self.line_dict[name]:
+                self.line_dict[name]["line_obj"].remove()
+            self.plt_ax.legend(fontsize="small")
+            self.line_dict.pop(name)
 
 # ==============================================================================
 # MODULE TESTBENCH
