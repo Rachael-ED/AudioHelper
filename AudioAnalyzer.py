@@ -61,6 +61,10 @@ class AudioAnalyzer(QObject):
         self.hist_dur = 3      # Length [seconds] of history buffer
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
+        self.apply_cal = False    # False = Don't use.  True = Use.  None = Remove.  String = Capture plot line
+        self.cal_freq_list = []
+        self.cal_ampl_list = []
+
     def msgHandler(self, buf_id):
         # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
@@ -71,6 +75,8 @@ class AudioAnalyzer(QObject):
             self.analyze(msg_data)
         elif msg_type == "sweep":
             self.sweep(msg_data)
+        elif msg_type == "apply_cal":
+            self.apply_cal = msg_data
         elif msg_type == "change_start_freq":
             self.changeStartFreq(msg_data)
         elif msg_type == "change_stop_freq":
@@ -145,11 +151,15 @@ class AudioAnalyzer(QObject):
         fft_list = rfft(volt_list)              # FFT of measurement (complex values)
         ampl_list = np.abs(fft_list)            # Amplitude spectrum of measurement
 
+        # Apply Calibration
+        if self.apply_cal == True:
+            ampl_list = np.divide(ampl_list, self.cal_ampl_list)
+
         # Add to History
         self.hist_add(freq_list, ampl_list)
 
         # Send Amplitude Spectrum to Guido
-        spec_buf = ["meas", freq_list, ampl_list]
+        spec_buf = ["Live", freq_list, ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
@@ -181,8 +191,25 @@ class AudioAnalyzer(QObject):
             avg_ampl_list = np.exp(avg_ampl_list)                           # Then "un-log" again
 
         # Send Average Amplitude to Guido
-        spec_buf = ["avg", freq_list, avg_ampl_list]
+        spec_buf = ["Avg", freq_list, avg_ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+
+        # Capture Calibration Data to Apply Next Time
+        if self.apply_cal == None:
+            self.buf_man.msgSend("Guido", "remove_plot", "Cal")
+            self.apply_cal = False
+
+        elif self.apply_cal == "Live":
+            self.cal_freq_list = freq_list
+            self.cal_ampl_list = ampl_list
+            self.buf_man.msgSend("Guido", "plot_data", ["Cal", freq_list, ampl_list])
+            self.apply_cal = True
+
+        elif self.apply_cal == "Avg":
+            self.cal_freq_list = freq_list
+            self.cal_ampl_list = avg_ampl_list
+            self.buf_man.msgSend("Guido", "plot_data", ["Cal", freq_list, avg_ampl_list])
+            self.apply_cal = True
 
     def run(self):
         logging.info("AudioAnalyzer started")
