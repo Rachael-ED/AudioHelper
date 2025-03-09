@@ -186,11 +186,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
-        self.resize(700, 500)
+        self.resize(660, 550)
 
         # Create Plot for Spectrum
         layout = QVBoxLayout(self.plt_canvas)              # Plug into the placeholder widget
-        plt_canvas = FigureCanvas(Figure(figsize=(5, 3)))
+        plt_canvas = FigureCanvas(Figure())
+        plt_canvas.figure.subplots_adjust(0.13, 0.15, 0.97, 0.95)  # left,bottom,right,top
         layout.addWidget(plt_canvas)
         layout.addWidget(NavigationToolbar(plt_canvas, self))
 
@@ -198,8 +199,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax.grid(visible=True, which='both', axis='x')
         self.plt_ax.grid(visible=True, which='major', axis='y')
         self.plt_ax.semilogx()
-        self.plt_ax.set_xlabel('Frequency [Hz]')
-        self.plt_ax.set_ylabel('Amplitude [dB]')
+        self.plt_ax.set_xlabel('Frequency [Hz]', size="small")
+        self.plt_ax.set_ylabel('Amplitude [dB]', size="small")
         self.plt_ax.set_ylim(C_SPEC_MIN_DB, C_SPEC_MAX_DB)
         self.plt_ax.set_xlim(C_SPEC_MIN_FREQ, C_SPEC_MAX_FREQ)
         self.plt_ax.set_yticks(np.arange(C_SPEC_MIN_DB, C_SPEC_MAX_DB, C_SPEC_GRID_DB))
@@ -283,7 +284,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def btn_aud_ana_cal_click(self):
         logging.info(f"Clicked the Calibrate button")
         if self.btn_aud_ana_cal.text() == "Calibrate":
-            self.buf_man.msgSend("Ana", "apply_cal", "Avg")
+            cal_name = self.cmb_aud_ana_cal.currentText()
+            self.buf_man.msgSend("Ana", "apply_cal", cal_name)
             self.btn_aud_ana_cal.setText("Clear Cal")
         else:
             self.buf_man.msgSend("Ana", "apply_cal", None)
@@ -499,6 +501,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
                 "line_obj": plt_refs[0]     # Store Line2D object to reference layer
             }
             self.plt_ax.legend(fontsize="small")
+            if name != "Cal":
+                self.cmb_aud_ana_cal.addItem(name)
             plt_refs[0].figure.canvas.draw()
 
     def remove_plot(self, name):
@@ -507,6 +511,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             if "line_obj" in self.line_dict[name]:
                 self.line_dict[name]["line_obj"].remove()
             self.plt_ax.legend(fontsize="small")
+
+            ind = self.cmb_aud_ana_cal.findText(name)
+            if ind != -1:
+                self.cmb_aud_ana_cal.removeItem(ind)
+
             self.line_dict.pop(name)
 
 # ==============================================================================
