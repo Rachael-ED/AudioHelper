@@ -57,13 +57,17 @@ class AudioAnalyzer(QObject):
         self._stop_requested = False
         self.start_freq = C_FREQ_MIN
         self.stop_freq = C_FREQ_MAX
-        self.sweep_points = 100
+        self.sweep_points = 100                  # was 100 but changed to 50 for testing
         self.hist_dur = 3      # Length [seconds] of history buffer
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
         self.apply_cal = False    # False = Don't use.  True = Use.  None = Remove.  String = Capture plot line
         self.cal_freq_list = []
         self.cal_ampl_list = []
+
+        self.sweepFreqs = [np.nan] * self.sweep_points
+        self.sweepAmpls = [np.nan] * self.sweep_points
+        self.numSweepFreqs = 0
 
     def msgHandler(self, buf_id):
         # Retrieve Message
@@ -140,6 +144,9 @@ class AudioAnalyzer(QObject):
         self.hist_list.append([time.monotonic(), freq_list, ampl_list])
 
     def analyze(self, voltageAndTime):
+        # keep track of current sweep frequency
+        currSweepFreq = self.sweep_freq
+
         # Retrieve buffer with mic waveform
         [time_list, volt_list] = voltageAndTime
 
@@ -161,6 +168,34 @@ class AudioAnalyzer(QObject):
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+
+        # check if sweep is running
+        # if so, need to go through frequencies and find the corresponding amplitude
+        if (self.sweep_running == True):
+
+            # distance between frequencies from Mic
+            distBtwnFreq = 2.69165039
+            lastFreq = 22050
+
+            # find where currSweepFreq is within the buffer read from Mic
+            i = int(currSweepFreq / distBtwnFreq)
+
+            # if this is the first sweepFreq, then add it to the array
+            if self.numSweepFreqs == 0:
+                self.sweepAmpls[self.numSweepFreqs] = ampl_list[i]
+                self.sweepFreqs[self.numSweepFreqs] = currSweepFreq
+                self.numSweepFreqs = self.numSweepFreqs + 1
+            elif (self.numSweepFreqs != 0) and (currSweepFreq != self.sweepFreqs[self.numSweepFreqs-1]):
+                self.sweepAmpls[self.numSweepFreqs] = ampl_list[i]
+                self.sweepFreqs[self.numSweepFreqs] = currSweepFreq
+                self.numSweepFreqs = self.numSweepFreqs + 1
+
+            print(self.sweepFreqs)
+            print(self.sweepAmpls)
+
+            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
         # Calc Average Amplitude Over History Buffer
@@ -214,8 +249,7 @@ class AudioAnalyzer(QObject):
     def run(self):
         logging.info("AudioAnalyzer started")
         self._stop_requested = False
-        it_cnt = 0
-        sweep_freq = 0
+        self.sweep_freq = 0
         sweep_freq_mult = 0
         next_it_time = time.monotonic()
         while not self._stop_requested:
@@ -233,18 +267,18 @@ class AudioAnalyzer(QObject):
                     self.sweep_running = True
                     if self.start_freq > self.stop_freq:
                         (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
-                    sweep_freq = self.start_freq
+                    self.sweep_freq = self.start_freq
                     sweep_freq_mult = (self.stop_freq / self.start_freq) ** (1/(self.sweep_points-1))
 
                 # --- Generate Sweep Tone ---
-                logging.info(f"{self.name}: AudioAnalyzer sweep generating {sweep_freq}Hz.")
-                self.buf_man.msgSend("Gen", "play_tone", sweep_freq)
+                logging.info(f"{self.name}: AudioAnalyzer sweep generating {self.sweep_freq}Hz.")
+                self.buf_man.msgSend("Gen", "play_tone", self.sweep_freq)
 
                 # --- Determine Next Sweep Tone ---
                 # When we're done, we'll generate 0, which stops Gen
-                sweep_freq = sweep_freq * sweep_freq_mult
-                if sweep_freq >= self.stop_freq:
-                    sweep_freq = 0
+                self.sweep_freq = self.sweep_freq * sweep_freq_mult
+                if self.sweep_freq >= self.stop_freq:
+                    self.sweep_freq = 0
                     logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
                     self.sweep(False)
                     self.buf_man.msgSend("Guido", "sweep_finished", None)
