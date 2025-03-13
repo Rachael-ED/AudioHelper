@@ -56,22 +56,42 @@ class MicReader(QObject):
         # find number of devices (input and output)
         numDevices = p.get_device_count()
 
+        self.dev_ind_to_name = {-1: "None"}
+        self.dev_name_to_ind = {"None": -1}
+        self.inputIndex = -1
         for i in range(0, numDevices):
             if p.get_device_info_by_index(i).get('maxInputChannels') != 0:
-                self.inputIndex = i
-                logging.info(f"Default input: {p.get_device_info_by_index(i).get('name')}")
-                break
+                dev_name = p.get_device_info_by_index(i).get('name')
+                self.dev_ind_to_name[i] = dev_name
+                self.dev_name_to_ind[dev_name] = i
+                if self.inputIndex == -1:
+                    self.inputIndex = i
+                    logging.info(f"Default input: {dev_name}")
 
     def msgHandler(self, buf_id):
         # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ###logging.info(f"{self.name} received {msg_type} from {snd_name} : {msg_data}")
         ack_data = None
 
         # Process Message
         if msg_type == "enable":
             self.enable(msg_data)
+
         elif msg_type == "change_input":
             self.changeInputIndex(msg_data)
+
+        elif msg_type == "cfg_load":
+            for param in msg_data.keys():
+                val = msg_data[param]
+                if (param == "inputDevice") and (val in self.dev_name_to_ind):
+                    self.changeInputIndex(self.dev_name_to_ind[val])
+
+        elif msg_type == "REQ_cfg_save":
+            ack_data = {
+                "inputDevice": self.dev_ind_to_name[self.inputIndex]
+            }
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 

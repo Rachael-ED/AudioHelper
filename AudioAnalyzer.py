@@ -72,19 +72,31 @@ class AudioAnalyzer(QObject):
     def msgHandler(self, buf_id):
         # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ###logging.info(f"{self.name} received {msg_type} from {snd_name} : {msg_data}")
         ack_data = None
 
         # Process Message
         if msg_type == "mic_data":
             self.analyze(msg_data)
+
         elif msg_type == "sweep":
             self.sweep(msg_data)
+
         elif msg_type == "apply_cal":
             self.apply_cal = msg_data
+
         elif msg_type == "change_start_freq":
             self.changeStartFreq(msg_data)
+
         elif msg_type == "change_stop_freq":
             self.changeStopFreq(msg_data)
+
+        elif msg_type == "cfg_load":
+            pass
+
+        elif msg_type == "REQ_cfg_save":
+            pass
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
