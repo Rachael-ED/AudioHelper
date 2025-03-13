@@ -37,8 +37,6 @@ class AudioGen(QObject):
     sig_ipc_mic = pyqtSignal(int)
     sig_ipc_ana = pyqtSignal(int)
 
-    # Comment by Rachael
-
     def __init__(self, format, channels, rate, framesPerBuffer, name="Gen"):
         super().__init__()
 
@@ -102,7 +100,6 @@ class AudioGen(QObject):
             self.changeFreq(msg_data)
         elif msg_type == "change_vol":
             self.changeVol(msg_data)
-
         elif msg_type == "REQ_cfg":
             ack_data = {
                 "enable": self._audio_on,
