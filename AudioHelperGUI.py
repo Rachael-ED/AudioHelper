@@ -161,6 +161,10 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Set Up Dictionary with Plot Line Data
         self.line_dict = {}
 
+        self.sweepRunning = False
+        self.sweepFreqs = []
+        self.sweepAmpls = []
+
         # Create Buffer Manager
         self.name = name
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
