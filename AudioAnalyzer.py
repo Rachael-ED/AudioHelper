@@ -163,8 +163,13 @@ class AudioAnalyzer(QObject):
         fft_list = rfft(volt_list)              # FFT of measurement (complex values)
         ampl_list = np.abs(fft_list)            # Amplitude spectrum of measurement
 
+        # Remove DC element
+        freq_list = np.delete(freq_list,0)
+        ampl_list = np.delete(ampl_list,0)
+
         # Apply Calibration
-        if self.apply_cal == True:
+        apply_cal = self.apply_cal
+        if apply_cal == True:
             ampl_list = np.divide(ampl_list, self.cal_ampl_list)
 
         # Add to History
@@ -207,20 +212,14 @@ class AudioAnalyzer(QObject):
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
 
         # Capture Calibration Data to Apply Next Time
-        if self.apply_cal == None:
+        if apply_cal == None:
             self.buf_man.msgSend("Guido", "remove_plot", "Cal")
             self.apply_cal = False
 
-        elif self.apply_cal == "Live":
-            self.cal_freq_list = freq_list
-            self.cal_ampl_list = ampl_list
-            self.buf_man.msgSend("Guido", "plot_data", ["Cal", freq_list, ampl_list])
-            self.apply_cal = True
-
-        elif self.apply_cal == "Avg":
-            self.cal_freq_list = freq_list
-            self.cal_ampl_list = avg_ampl_list
-            self.buf_man.msgSend("Guido", "plot_data", ["Cal", freq_list, avg_ampl_list])
+        elif type(apply_cal) is list:
+            self.cal_freq_list = apply_cal[0]
+            self.cal_ampl_list = apply_cal[1]
+            self.buf_man.msgSend("Guido", "plot_data", ["Cal", apply_cal[0], apply_cal[1]])
             self.apply_cal = True
 
     def run(self):

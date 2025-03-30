@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>661</width>
-    <height>536</height>
+    <height>581</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,7 +19,7 @@
      <x>10</x>
      <y>10</y>
      <width>641</width>
-     <height>520</height>
+     <height>563</height>
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout" rowstretch="1,0" columnstretch="1,6">
@@ -275,9 +275,6 @@
     </item>
     <item row="0" column="0">
      <layout class="QVBoxLayout" name="verticalLayout_4">
-      <property name="spacing">
-       <number>3</number>
-      </property>
       <item alignment="Qt::AlignHCenter|Qt::AlignTop">
        <widget class="QLabel" name="img_herman">
         <property name="enabled">
@@ -325,6 +322,12 @@
       </item>
       <item alignment="Qt::AlignVCenter">
        <widget class="QPushButton" name="btn_aud_ana_enable">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
          <string>Freeze</string>
         </property>
@@ -343,15 +346,63 @@
         </property>
        </spacer>
       </item>
-      <item alignment="Qt::AlignBottom">
-       <widget class="QComboBox" name="cmb_aud_ana_cal"/>
-      </item>
-      <item alignment="Qt::AlignTop">
-       <widget class="QPushButton" name="btn_aud_ana_cal">
-        <property name="text">
-         <string>Calibrate</string>
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_7">
+        <property name="spacing">
+         <number>0</number>
         </property>
-       </widget>
+        <item>
+         <widget class="QPushButton" name="btn_load_data">
+          <property name="text">
+           <string>Load</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_7">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QComboBox" name="cmb_aud_ana_cal">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_clear_data">
+          <property name="text">
+           <string>Clear</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_aud_ana_cal">
+          <property name="text">
+           <string>Calibrate</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_save_data">
+          <property name="text">
+           <string>Save</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <spacer name="horizontalSpacer_5">
@@ -409,14 +460,14 @@
       <item>
        <widget class="QPushButton" name="btn_cfg_load">
         <property name="text">
-         <string>Load</string>
+         <string>Load Config</string>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="btn_cfg_save">
         <property name="text">
-         <string>Save</string>
+         <string>Save Config</string>
         </property>
        </widget>
       </item>
