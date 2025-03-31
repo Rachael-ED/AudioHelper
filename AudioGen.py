@@ -37,6 +37,8 @@ class AudioGen(QObject):
     sig_ipc_mic = pyqtSignal(int)
     sig_ipc_ana = pyqtSignal(int)
 
+    # Comment by Rachael
+
     def __init__(self, format, channels, rate, framesPerBuffer, name="Gen"):
         super().__init__()
 
@@ -72,34 +74,59 @@ class AudioGen(QObject):
         # find number of devices (input and output)
         numDevices = p.get_device_count()
 
+        self.dev_ind_to_name = {-1: "None"}
+        self.dev_name_to_ind = {"None": -1}
+        self.outputIndex = -1
         for i in range(0, numDevices):
             if p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
-                self.outputIndex = i
-                logging.info(f"Default output: {p.get_device_info_by_index(i).get('name')}")
-                break
+                dev_name = p.get_device_info_by_index(i).get('name')
+                self.dev_ind_to_name[i] = dev_name
+                self.dev_name_to_ind[dev_name] = i
+                if self.outputIndex == -1:
+                    self.outputIndex = i
+                    logging.info(f"Default output: {dev_name}")
 
     # Handle Messages from Other Objects
     def msgHandler(self, buf_id):
         # Retrieve Message
         [msg_type, snd_name, msg_data] = self.buf_man.msgReceive(buf_id)
+        ###logging.info(f"{self.name} received {msg_type} from {snd_name} : {msg_data}")
         ack_data = None
 
         # Process Message
         if msg_type == "enable":
             self.enable(msg_data)
+
         elif msg_type == "play_tone":
             self.playTone(msg_data)
+
         elif msg_type == "silent":
             self.enable(False)
             self.playTone(False)
+
         elif msg_type == "change_output":
             self.changeOutputIndex(msg_data)
+
         elif msg_type == "change_mode":
             self.changeMode(msg_data)
+
         elif msg_type == "change_freq":
             self.changeFreq(msg_data)
+
         elif msg_type == "change_vol":
             self.changeVol(msg_data)
+
+        elif msg_type == "cfg_load":
+            for param in msg_data.keys():
+                val = msg_data[param]
+                if (param == "outputDevice") and (val in self.dev_name_to_ind):
+                    self.changeOutputIndex(self.dev_name_to_ind[val])
+
+        elif msg_type == "REQ_cfg_save":
+            ack_data = {
+                "outputDevice": self.dev_ind_to_name[self.outputIndex]
+            }
+
         elif msg_type == "REQ_cfg":
             ack_data = {
                 "enable": self._audio_on,
@@ -113,6 +140,12 @@ class AudioGen(QObject):
                 "outputIndex": self.outputIndex,
                 "numSamples": self.numSamples
             }
+
+        elif msg_type == "REQ_sweep_mode":
+            if self.mode == "Sweep":
+                ack_data = True
+            else:
+                ack_data = False
 
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
@@ -236,6 +269,9 @@ class AudioGen(QObject):
             self.freq = playFreq
             self._audio_on = True
 
+        # send a message to Mic to indicate which sweep freq he should be reading
+        self.buf_man.msgSend("Mic", "curr_sweep_freq", playFreq)
+
     def changeOutputIndex(self, newOutputIndex):
         self.outputIndex = newOutputIndex
         self._reopen_stream = True
@@ -284,4 +320,3 @@ if __name__ == "__main__":
     time.sleep(5)
     logging.info("--- DONE " + "-"*40)
 '''
-
