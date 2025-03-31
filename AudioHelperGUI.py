@@ -205,7 +205,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax = plt_canvas.figure.subplots()
         self.plt_ax.grid(visible=True, which='both', axis='x')
         self.plt_ax.grid(visible=True, which='major', axis='y')
-        self.plt_ax.semilogx()
+        #self.plt_ax.semilogx()
         self.plt_ax.set_xlabel('Frequency [Hz]', size="small")
         self.plt_ax.set_ylabel('Amplitude [dB]', size="small")
         self.plt_ax.set_ylim(C_SPEC_MIN_DB, C_SPEC_MAX_DB)
@@ -429,6 +429,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
+            self.buf_man.msgSend("Ana", "clear_sweep", None)
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
