@@ -4,13 +4,15 @@
 import sys
 import time
 import logging
+import re
+import os
 
 import numpy as np
 
 from PyQt5.Qt import *
 from PyQt5.QtGui import QDoubleValidator
 from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFileDialog
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QInputDialog
 
 import matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -24,6 +26,7 @@ import pyaudio as pa
 
 from pprint import pformat
 import json
+import csv
 
 matplotlib.use('Qt5Agg')
 
@@ -193,7 +196,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         # Some Basic Window Setup
         self.setWindowTitle("AudioHelper")
-        self.resize(660, 550)
+        self.resize(660, 580)
 
         # Create Plot for Spectrum
         layout = QVBoxLayout(self.plt_canvas)              # Plug into the placeholder widget
@@ -251,6 +254,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         self.btn_aud_ana_cal.clicked.connect(self.btn_aud_ana_cal_click)
 
+        self.btn_load_data.clicked.connect(self.btn_load_data_click)
+        self.btn_save_data.clicked.connect(self.btn_save_data_click)
+        self.btn_clear_data.clicked.connect(self.btn_clear_data_click)
+
+        self.btn_help.clicked.connect(self.btn_help_click)
+
     def closeEvent(self, event):
         logging.info("Main window will close in 1 second...")
         self.sig_closing.emit()
@@ -270,6 +279,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         elif msg_type == "remove_plot":
             self.remove_plot(msg_data)
+
+        elif msg_type == "hide_plot":
+            self.hide_plot(msg_data)
+
+        elif msg_type == "show_plot":
+            self.show_plot(msg_data)
 
         elif msg_type == "default_output":
             self.defOutput = msg_data
@@ -306,6 +321,15 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
                 "vol": self.txt_aud_gen_vol.text()
             }
 
+        elif (msg_type == "MsgBox") or (msg_type == "REQ_MsgBox"):
+            param_list = ["", "Ok", "AudioHelper"]   # Default parameters
+            for i in range(0,len(msg_data)):
+                param_list[i] = msg_data[i]
+            [msg_str, msg_box_type, title] = param_list
+            ret_val = self.MsgBox(msg_str, msg_box_type, title)
+            if msg_type == "REQ_MsgBox":
+                ack_data = ret_val
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -313,8 +337,66 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.buf_man.msgAcknowledge(buf_id, ack_data)
 
     # ----------------------------------------------------------------------
+    # Standard Message Boxes
+    #
+    def MsgBox(self, msg_str, msg_box_type = "Ok", title = "AudioHelper"):
+        msg_box = QMessageBox(self)
+        msg_box.setText(msg_str)
+        msg_box.setWindowTitle(title)
+
+        if msg_box_type == "OkCancel":
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+
+        elif msg_box_type == "YesNo":
+            msg_box.setIcon(QMessageBox.Icon.Question)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+
+        elif msg_box_type == "YesNoCancel":
+            msg_box.setIcon(QMessageBox.Icon.Question)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+
+        elif msg_box_type == "WarnOkCancel":
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+
+        elif msg_box_type == "Error":
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        else:
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        ret_val = msg_box.exec()
+
+        if ret_val == QMessageBox.Ok:
+            return True
+        elif ret_val == QMessageBox.Cancel:
+            if msg_box_type == "YesNoCancel":
+                return None
+            return False
+        elif ret_val == QMessageBox.Yes:
+            return True
+        elif ret_val == QMessageBox.No:
+            return False
+
+        return None
+
+    # ----------------------------------------------------------------------
     # AudioGen Widgets
     #
+
+    def btn_help_click(self):
+        logging.info(f"Clicked the Help button")
+
+        name = "Avg"
+        if "line_obj" in self.line_dict[name]:
+            #self.hide_plot(name)
+            self.buf_man.msgSend("Guido", "hide_plot", name)
+        else:
+            #self.show_plot(name)
+            self.buf_man.msgSend("Guido", "show_plot", name)
 
     def setup_btn_click(self):
         setupWin = SetupWindow()
@@ -354,14 +436,106 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             json.dump(cfg_data, write_file, indent=4)
 
     def btn_aud_ana_cal_click(self):
-        logging.info(f"Clicked the Calibrate button")
         if self.btn_aud_ana_cal.text() == "Calibrate":
-            cal_name = self.cmb_aud_ana_cal.currentText()
-            self.buf_man.msgSend("Ana", "apply_cal", cal_name)
-            self.btn_aud_ana_cal.setText("Clear Cal")
+            name = self.cmb_aud_ana_cal.currentText()
+            logging.info(f"Calibrating with {name}")
+            if name in self.line_dict.keys():
+                freq_list = self.line_dict[name]["freq_list"]
+                ampl_list = self.line_dict[name]["ampl_list"]
+                self.buf_man.msgSend("Ana", "apply_cal", [freq_list, ampl_list])
+                self.btn_aud_ana_cal.setText("Clear Cal")
         else:
+            logging.info(f"Clearing Calibration")
             self.buf_man.msgSend("Ana", "apply_cal", None)
             self.btn_aud_ana_cal.setText("Calibrate")
+
+    def btn_load_data_click(self):
+        (fname, filt) = QFileDialog.getOpenFileName(self, "Load data", None, 'Csv Files (*.csv);;All Files (*)')
+        if fname == "":
+            return
+
+        logging.info(f"Loading configuration from {fname}")
+
+        # Slurp .csv file into dictionary.  The header is the first row, and contains the dictionary keys
+        data_dict = {}
+        freq_key = None
+        ampl_key = None
+        ampldb_key = None
+        is_first_row = True
+        with open(fname, mode="r", encoding="utf-8") as csv_file:
+            csv_reader = csv.DictReader(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for row_dict in csv_reader:
+                for key, value in row_dict.items():
+                    # Set Up List and Detect Fields on First Row
+                    if is_first_row:
+                        data_dict[key] = []    # Create list to load data
+                        if re.search('freq', key, re.IGNORECASE):
+                            freq_key = key
+                        elif re.search('ampl.*db', key, re.IGNORECASE):
+                            ampldb_key = key
+                        elif re.search('ampl', key, re.IGNORECASE):
+                            ampl_key = key
+
+                    # Store Value in Dictionary
+                    if (not key is None) and (not value is None):
+                        data_dict[key].append(value)
+
+                is_first_row = False
+
+        # Retrieve Frequency from File
+        if freq_key is None:
+            self.MsgBox("Unable to find frequency in file", "Error")
+            return
+        freq_list = np.array(data_dict[freq_key]).astype(np.float32)
+
+        # Retrieve Amplitudes from File
+        if (ampl_key is None) and (ampldb_key is None):
+            self.MsgBox("Unable to find amplitude in file", "Error")
+            return
+        ampl_list = None
+        if ampl_key is None:
+            ampldb_list = np.array(data_dict[ampldb_key]).astype(np.float32)
+            ampl_list = 10**(np.divide(ampldb_list, 20))
+        else:
+            ampl_list = np.array(data_dict[ampl_key]).astype(np.float32)
+
+        # Get Name for New Series
+        def_name = os.path.basename(fname)
+        def_name = re.sub(".csv$", "", def_name, flags=re.IGNORECASE)
+        name, input_ok = QInputDialog.getText(self, 'Load Data', 'Enter the name for the data:', text=def_name)
+        if not input_ok:
+            return
+        if name is None:
+            return
+        if name in self.line_dict.keys():
+            self.MsgBox(f"Data already loaded for {name}", "Error")
+            return
+
+        # Add Plot
+        self.update_plot(name, freq_list, ampl_list)
+
+    def btn_save_data_click(self):
+        name = self.cmb_aud_ana_cal.currentText()
+        if name in self.line_dict.keys():
+            (fname, filt) = QFileDialog.getSaveFileName(self, "Save data", None, 'Csv Files (*.csv);;All Files (*)')
+            if fname == "":
+                return
+
+            logging.info(f"Saving data to {fname}")
+
+            with open(fname, mode='w') as csv_file:
+                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
+                freq_list = self.line_dict[name]["freq_list"]
+                ampl_list = self.line_dict[name]["ampl_list"]
+                ampldb_list = self.line_dict[name]["ampldb_list"]
+                for ind in range(0, len(freq_list)):
+                    csv_writer.writerow([freq_list[ind], ampl_list[ind], ampldb_list[ind]])
+
+    def btn_clear_data_click(self):
+        name = self.cmb_aud_ana_cal.currentText()
+        logging.info(f"Clicked Clear Data: {name}")
+        self.remove_plot(name)
 
     def set_silence(self):
         logging.info("Stopping all sound")
@@ -559,35 +733,49 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.btn_aud_ana_enable.setText("Freeze")
 
     def update_plot(self, name, freq_list, ampl_list):
-        # Remove DC element
-        freq_list = np.delete(freq_list,0)
-        ampl_list = np.delete(ampl_list,0)
 
         # Tranlsate to dB
-        ampl_list = np.clip(ampl_list, 1e-6, None)      # np.log10() won't like 0s
-        ampl_list = 20 * np.log10(ampl_list)                         # Translate to dB
-        ampl_list = np.clip(ampl_list, C_SPEC_MIN_DB, C_SPEC_MAX_DB) # Limit to plot range
+        ampldb_list = np.clip(ampl_list, 1e-6, None)        # np.log10() won't like 0s
+        ampldb_list = 20 * np.log10(ampldb_list)                         # Translate to dB
+        ampldb_list = np.clip(ampldb_list, C_SPEC_MIN_DB, C_SPEC_MAX_DB) # Limit to plot range
 
         # Update Existing Plot Line
         if name in self.line_dict.keys():
             ###logging.info(f"Updating plot line: {name}")
-            line_obj = self.line_dict[name]["line_obj"]
-            line_obj.set_data(freq_list, ampl_list)
-            line_obj.figure.canvas.draw()
+            self.line_dict[name]["freq_list"] = freq_list
+            self.line_dict[name]["ampl_list"] = ampl_list
+            self.line_dict[name]["ampldb_list"] = ampldb_list
+
+            if "line_obj" in self.line_dict[name]:
+                line_obj = self.line_dict[name]["line_obj"]
+                line_obj.set_data(freq_list, ampldb_list)
+                line_obj.figure.canvas.draw()
 
         # Add New Plot Line
         else:
             ###logging.info(f"Adding plot line: {name}")
-            plt_refs = self.plt_ax.plot(freq_list, ampl_list, label = name)
+            plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label = name)
             self.line_dict[name] = {
-                "line_obj": plt_refs[0]     # Store Line2D object to reference layer
+                "line_obj": plt_refs[0],     # Store Line2D object to reference layer
+                "freq_list": freq_list,
+                "ampl_list": ampl_list,
+                "ampldb_list": ampldb_list
             }
+
+            if len(self.line_dict) <= 1:
+                self.btn_clear_data.setEnabled(False)
+            else:
+                self.btn_clear_data.setEnabled(True)
+
             self.plt_ax.legend(fontsize="small")
-            if name != "Cal":
-                self.cmb_aud_ana_cal.addItem(name)
+            self.cmb_aud_ana_cal.addItem(name)
+
             plt_refs[0].figure.canvas.draw()
 
     def remove_plot(self, name):
+        if len(self.line_dict) <= 1:
+            logging.info(f"ERROR: Cannot remove last plot")
+            return
         if name in self.line_dict.keys():
             ###logging.info(f"Removing plot line: {name}")
             if "line_obj" in self.line_dict[name]:
@@ -599,6 +787,44 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
                 self.cmb_aud_ana_cal.removeItem(ind)
 
             self.line_dict.pop(name)
+            if len(self.line_dict) <= 1:
+                self.btn_clear_data.setEnabled(False)
+            else:
+                self.btn_clear_data.setEnabled(True)
+
+            self.plt_ax.get_figure().canvas.draw()
+
+    def hide_plot(self, name):
+        if not (name in self.line_dict.keys()):          # Line doesn't exist
+            return
+        if not ("line_obj" in self.line_dict[name]):     # Line already hidden
+            return
+
+        ###logging.info(f"Hiding plot line: {name}")
+        self.line_dict[name]["line_obj"].remove()
+        self.line_dict[name].pop("line_obj")
+        self.plt_ax.legend(fontsize="small")
+        self.plt_ax.get_figure().canvas.draw()
+
+    def show_plot(self, name):
+        if not (name in self.line_dict.keys()):          # Line doesn't exist
+            return
+        if "line_obj" in self.line_dict[name]:           # Line already shown
+            return
+        if not ("freq_list" in self.line_dict[name]):    # Shouldn't happen
+            return
+        if not ("ampldb_list" in self.line_dict[name]):  # Shouldn't happen
+            return
+
+        freq_list = self.line_dict[name]["freq_list"]
+        ampldb_list = self.line_dict[name]["ampldb_list"]
+
+        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label=name)
+        self.line_dict[name]["line_obj"] = plt_refs[0]  # Store Line2D object to reference layer
+
+        self.plt_ax.legend(fontsize="small")
+
+        plt_refs[0].figure.canvas.draw()
 
 # ==============================================================================
 # MODULE TESTBENCH
