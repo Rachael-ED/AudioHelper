@@ -92,6 +92,9 @@ class MicReader(QObject):
                 "inputDevice": self.dev_ind_to_name[self.inputIndex]
             }
 
+        elif msg_type == "curr_sweep_freq":
+            self.currSweepFreq = msg_data
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -131,7 +134,17 @@ class MicReader(QObject):
                 data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
                 dataAsVoltage = np.frombuffer(data, dtype=np.float32)
                 voltageAndTime = [t, dataAsVoltage]
-                self.buf_man.msgSend("Ana", "mic_data", voltageAndTime)
+
+                # find out if Gen is in sweep mode or not
+                sweepMode = self.buf_man.msgSend("Gen", "REQ_sweep_mode", None)
+
+                # if so, send Ana the voltageAndTime info, as well as the current sweep frequency
+                # otherwise, just send the voltageAndTime info
+                if sweepMode == True:
+                    freqData = [voltageAndTime, self.currSweepFreq]
+                    self.buf_man.msgSend("Ana", "mic_data_sweep", freqData)
+                else:
+                    self.buf_man.msgSend("Ana", "mic_data", voltageAndTime)
             else:
                 time.sleep(1)
 
