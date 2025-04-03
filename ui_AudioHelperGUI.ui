@@ -382,6 +382,16 @@
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="btn_showhide_data">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>Hide</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QPushButton" name="btn_clear_data">
           <property name="text">
            <string>Clear</string>

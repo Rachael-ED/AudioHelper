@@ -6,6 +6,7 @@ import time
 import logging
 import re
 import os
+import traceback
 
 import numpy as np
 
@@ -167,6 +168,35 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Set Up Dictionary with Plot Line Data
         self.line_dict = {}
 
+        # Set Up Dictionary with Default Values for Standard Lines
+        self.line_def_dict = {
+            "Live": {
+                "colour": "tab:blue",
+                "zorder": 2,
+                "alpha": 1
+            },
+            "Avg": {
+                "colour": "tab:orange",
+                "zorder": 2.1,
+                "alpha": 0.8
+            },
+            "Cal": {
+                "colour": "tab:green",
+                "zorder": 2.2,
+                "alpha": 0.7
+            },
+            "Sweep": {
+                "colour": "tab:red",
+                "zorder": 2.3,
+                "alpha": 0.7
+            },
+        }
+
+        # Plot Colours
+        #     Used for plots other than the standard lines
+        self.line_colours = ['tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+        self.next_line_colour_ind = 0
+
         # Create Buffer Manager
         self.name = name
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
@@ -243,6 +273,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
 
+        self.cmb_aud_ana_cal.currentTextChanged.connect(self.cmb_aud_ana_cal_currentTextChanged)
+
         self.btn_setup.clicked.connect(self.setup_btn_click)
 
         self.btn_cfg_load.clicked.connect(self.btn_cfg_load_click)
@@ -253,6 +285,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.btn_load_data.clicked.connect(self.btn_load_data_click)
         self.btn_save_data.clicked.connect(self.btn_save_data_click)
         self.btn_clear_data.clicked.connect(self.btn_clear_data_click)
+        self.btn_showhide_data.clicked.connect(self.btn_showhide_data_click)
 
         self.btn_help.clicked.connect(self.btn_help_click)
 
@@ -444,6 +477,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             logging.info(f"Clearing Calibration")
             self.buf_man.msgSend("Ana", "apply_cal", None)
             self.btn_aud_ana_cal.setText("Calibrate")
+            self.remove_plot("Cal")
 
     def btn_load_data_click(self):
         (fname, filt) = QFileDialog.getOpenFileName(self, "Load data", None, 'Csv Files (*.csv);;All Files (*)')
@@ -532,6 +566,66 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         name = self.cmb_aud_ana_cal.currentText()
         logging.info(f"Clicked Clear Data: {name}")
         self.remove_plot(name)
+
+    def btn_showhide_data_click(self):
+        name = self.cmb_aud_ana_cal.currentText()
+        logging.info(f"Clicked Show/Hide Data: {name}")
+
+        if not (name in self.line_dict.keys()):          # Line doesn't exist
+            return
+        if self.btn_showhide_data.text() == "Show":
+            self.show_plot(name)
+        elif self.btn_showhide_data.text() == "Hide":
+            self.hide_plot(name)
+
+        self.btn_showhideclear_update()
+
+    def cmb_aud_ana_cal_currentTextChanged(self):
+        self.btn_showhideclear_update()
+
+    def btn_showhideclear_update(self):
+        #logging.info(f"Called btn_showhideclear_update()\n{traceback.print_stack()}")
+
+        name = self.cmb_aud_ana_cal.currentText()
+        if (len(self.line_dict) < 1) or (name is None) or (not (name in self.line_dict.keys())):  # Line doesn't exist
+            self.btn_showhide_data.setEnabled(False)
+            self.btn_clear_data.setEnabled(False)
+            self.btn_save_data.setEnabled(False)
+            self.btn_aud_ana_cal.setEnabled(False)
+            return
+
+        self.btn_save_data.setEnabled(True)              # If it exists, it can be saved
+
+        num_lines_shown = 0
+        cal_is_shown = False
+        for nm in self.line_dict.keys():
+            if "line_obj" in self.line_dict[nm]:
+                num_lines_shown = num_lines_shown + 1
+                if nm == "Cal":
+                    cal_is_shown = True
+
+        if self.btn_aud_ana_cal.text() == "Calibrate":
+            self.btn_aud_ana_cal.setEnabled(True)
+        else:
+            if (num_lines_shown == 1) and cal_is_shown:    # Don't allow Cal Clear cause nothing in the window
+                self.btn_aud_ana_cal.setEnabled(False)
+            else:
+                self.btn_aud_ana_cal.setEnabled(True)
+
+        if "line_obj" in self.line_dict[name]:           # Line already shown
+            self.btn_showhide_data.setText("Hide")
+
+            if num_lines_shown > 1:                          # It's not the only line shown
+                self.btn_showhide_data.setEnabled(True)
+                self.btn_clear_data.setEnabled(True)
+            else:                                           # It's the only line shown
+                self.btn_showhide_data.setEnabled(False)
+                self.btn_clear_data.setEnabled(False)
+
+        else:                                            # Line is hidden
+            self.btn_showhide_data.setText("Show")
+            self.btn_showhide_data.setEnabled(True)
+            self.btn_clear_data.setEnabled(True)
 
     def set_silence(self):
         logging.info("Stopping all sound")
@@ -749,12 +843,26 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Add New Plot Line
         else:
             ###logging.info(f"Adding plot line: {name}")
-            plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label = name)
+            colour = ""
+            alpha = 0.5
+            zorder = 2.5 + len(self.line_def_dict)/100   # On top of standard lines
+            if name in self.line_def_dict.keys():
+                colour = self.line_def_dict[name]["colour"]
+                alpha = self.line_def_dict[name]["alpha"]
+                zorder = self.line_def_dict[name]["zorder"]
+            else:
+                colour = self.line_colours[self.next_line_colour_ind]
+                self.next_line_colour_ind = (self.next_line_colour_ind + 1) % len(self.line_colours)
+            plt_refs = self .plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
+
             self.line_dict[name] = {
                 "line_obj": plt_refs[0],     # Store Line2D object to reference layer
                 "freq_list": freq_list,
                 "ampl_list": ampl_list,
-                "ampldb_list": ampldb_list
+                "ampldb_list": ampldb_list,
+                "colour": colour,
+                "alpha": alpha,
+                "zorder": zorder
             }
 
             if len(self.line_dict) <= 1:
@@ -764,6 +872,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.plt_ax.legend(fontsize="small")
             self.cmb_aud_ana_cal.addItem(name)
+            self.btn_showhideclear_update()
 
             plt_refs[0].figure.canvas.draw()
 
@@ -789,6 +898,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.plt_ax.get_figure().canvas.draw()
 
+            self.btn_showhideclear_update()
+
     def hide_plot(self, name):
         if not (name in self.line_dict.keys()):          # Line doesn't exist
             return
@@ -800,6 +911,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.line_dict[name].pop("line_obj")
         self.plt_ax.legend(fontsize="small")
         self.plt_ax.get_figure().canvas.draw()
+
+        self.btn_showhideclear_update()
 
     def show_plot(self, name):
         if not (name in self.line_dict.keys()):          # Line doesn't exist
@@ -813,13 +926,18 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         freq_list = self.line_dict[name]["freq_list"]
         ampldb_list = self.line_dict[name]["ampldb_list"]
+        colour = self.line_dict[name]["colour"]
+        zorder = self.line_dict[name]["zorder"]
+        alpha = self.line_dict[name]["alpha"]
 
-        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label=name)
+        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
         self.line_dict[name]["line_obj"] = plt_refs[0]  # Store Line2D object to reference layer
 
         self.plt_ax.legend(fontsize="small")
 
         plt_refs[0].figure.canvas.draw()
+
+        self.btn_showhideclear_update()
 
 # ==============================================================================
 # MODULE TESTBENCH
