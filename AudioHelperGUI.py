@@ -7,6 +7,7 @@ import logging
 import re
 import os
 import traceback
+from datetime import datetime
 
 import numpy as np
 
@@ -285,6 +286,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.btn_load_data.clicked.connect(self.btn_load_data_click)
         self.btn_save_data.clicked.connect(self.btn_save_data_click)
         self.btn_clear_data.clicked.connect(self.btn_clear_data_click)
+        self.btn_copy_data.clicked.connect(self.btn_copy_data_click)
         self.btn_showhide_data.clicked.connect(self.btn_showhide_data_click)
 
         self.btn_help.clicked.connect(self.btn_help_click)
@@ -566,6 +568,31 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         name = self.cmb_aud_ana_cal.currentText()
         logging.info(f"Clicked Clear Data: {name}")
         self.remove_plot(name)
+
+    def btn_copy_data_click(self):
+        src_name = self.cmb_aud_ana_cal.currentText()
+        logging.info(f"Clicked Copy Data: {src_name}")
+
+        # Capture Data to Store Right Away
+        # If it's live, it might be changing...
+        if not src_name in self.line_dict:
+            return
+        freq_list = np.copy(self.line_dict[src_name]["freq_list"])
+        ampl_list = np.copy(self.line_dict[src_name]["ampl_list"])
+
+        # Get Name for New Series
+        def_name = src_name + datetime.now().strftime("_%y%m%d_%H%M%S")
+        name, input_ok = QInputDialog.getText(self, 'Copy Data', 'Enter the new name for the data:', text=def_name)
+        if not input_ok:
+            return
+        if name is None:
+            return
+        if name in self.line_dict.keys():
+            self.MsgBox(f"Data already loaded for {name}", "Error")
+            return
+
+        # Add Plot
+        self.update_plot(name, freq_list, ampl_list)
 
     def btn_showhide_data_click(self):
         name = self.cmb_aud_ana_cal.currentText()
