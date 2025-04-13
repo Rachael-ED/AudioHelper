@@ -35,8 +35,8 @@ matplotlib.use('Qt5Agg')
 #
 C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep']
 
-C_SPEC_MAX_DB = 80
-C_SPEC_MIN_DB = -80
+C_SPEC_MAX_DB = 0
+C_SPEC_MIN_DB = -200
 C_SPEC_GRID_DB = 10
 
 C_SPEC_MAX_FREQ = 20000    # [Hz]
@@ -735,7 +735,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def update_plot(self, name, freq_list, ampl_list):
 
         # Tranlsate to dB
-        ampldb_list = np.clip(ampl_list, 1e-6, None)        # np.log10() won't like 0s
+        ampldb_list = np.clip(ampl_list, 1e-12, None)        # np.log10() won't like 0s
         ampldb_list = 20 * np.log10(ampldb_list)                         # Translate to dB
         ampldb_list = np.clip(ampldb_list, C_SPEC_MIN_DB, C_SPEC_MAX_DB) # Limit to plot range
 
