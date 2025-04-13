@@ -51,6 +51,8 @@ class MicReader(QObject):
         self.framesPerBuffer = 16384     # i.e. 2^14
         self._reopen_stream = False
 
+        self.tempFramesPerBuff = 16384
+
         # instantiate PyAudio
         p = pa.PyAudio()
         # find number of devices (input and output)
@@ -116,7 +118,8 @@ class MicReader(QObject):
         # instantiate PyAudio
         micInput = pa.PyAudio()
         # set up a stream
-        stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True, input_device_index=self.inputIndex, frames_per_buffer=self.framesPerBuffer)
+        #stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True, input_device_index=self.inputIndex, frames_per_buffer=self.framesPerBuffer)
+        stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True, input_device_index=self.inputIndex)
 
         # time array
         t = np.linspace(start=0, stop=(self.framesPerBuffer - 1)/self.rate, num=self.framesPerBuffer).astype(np.float32)
@@ -126,17 +129,33 @@ class MicReader(QObject):
                 # instantiate PyAudio
                 micInput = pa.PyAudio()
                 # set up a stream
-                stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True,
-                                       input_device_index=self.inputIndex, frames_per_buffer=self.framesPerBuffer)
+                stream = micInput.open(format=self.format, channels=self.channels, rate=self.rate, input=True, input_device_index=self.inputIndex)
                 self._reopen_stream = False
 
             if self._audio_on:
-                data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
-                dataAsVoltage = np.frombuffer(data, dtype=np.float32)
-                voltageAndTime = [t, dataAsVoltage]
-
+                self.tempFramesPerBuff = 16384
                 # find out if Gen is in sweep mode or not
                 sweepMode = self.buf_man.msgSend("Gen", "REQ_sweep_mode", None)
+
+                data = 0
+                if sweepMode == True and self.currSweepFreq > 0:
+                    self.tempFramesPerBuff = int(100/self.currSweepFreq*self.rate)
+
+                    '''
+                    if self.tempFramesPerBuff > self.framesPerBuffer:
+                        self.tempFramesPerBuff = self.framesPerBuffer
+                    '''
+
+                    data = stream.read(self.tempFramesPerBuff, exception_on_overflow=False)
+                    t = np.linspace(start=0, stop=(self.tempFramesPerBuff - 1)/self.rate, num=self.tempFramesPerBuff).astype(np.float32)
+                else:
+                    data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
+                    t = np.linspace(start=0, stop=(self.framesPerBuffer - 1) / self.rate, num=self.framesPerBuffer).astype(np.float32)
+
+
+                #data = stream.read(self.framesPerBuffer, exception_on_overflow=False)           # delete this line and uncomment above for dynamic buffer sizes
+                dataAsVoltage = np.frombuffer(data, dtype=np.float32)
+                voltageAndTime = [t, dataAsVoltage]
 
                 # if so, send Ana the voltageAndTime info, as well as the current sweep frequency
                 # otherwise, just send the voltageAndTime info
