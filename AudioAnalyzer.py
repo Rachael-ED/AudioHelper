@@ -18,6 +18,13 @@ from scipy.fft import rfft, rfftfreq
 C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
 
+C_GAIN_MAX_DB = 200
+C_GAIN_MIN_DB = 0
+
+C_HIST_DUR_MAX = 10    # Same as C_AVG_DUR_MAX in Guido
+C_HIST_DUR_MIN = 0     # Same as C_AVG_DUR_MIN in Guido
+
+
 C_SWEEP_DWELL_DUR = 0.5    # Time for each sweep tone [s]
 
 # ==============================================================================
@@ -58,6 +65,7 @@ class AudioAnalyzer(QObject):
         self.start_freq = C_FREQ_MIN
         self.stop_freq = C_FREQ_MAX
         self.sweep_points = 100
+        self.gain_db  = 60
         self.hist_dur = 3      # Length [seconds] of history buffer
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
@@ -86,6 +94,12 @@ class AudioAnalyzer(QObject):
 
         elif msg_type == "change_stop_freq":
             self.changeStopFreq(msg_data)
+
+        elif msg_type == "change_gain_db":
+            self.changeGainDb(msg_data)
+
+        elif msg_type == "change_hist_dur":
+            self.changeHistDur(msg_data)
 
         elif msg_type == "cfg_load":
             pass
@@ -128,6 +142,28 @@ class AudioAnalyzer(QObject):
             else:
                 self.stop_freq = newFreq
                 #logging.info(f"AudioAna stop_freq = {self.stop_freq}Hz")
+
+    def changeGainDb(self, newGainDb):
+        if newGainDb <= C_GAIN_MIN_DB:
+            self.gain_db = C_GAIN_MIN_DB
+            #logging.info(f"AudioAna gain_db = {self.gain_db}dB = MIN")
+        elif newGainDb >= C_GAIN_MAX_DB:
+            self.gain_db = C_GAIN_MAX_DB
+            #logging.info(f"AudioAna gain_db = {self.gain_db}dB = MAX")
+        else:
+            self.gain_db = newGainDb
+            #logging.info(f"AudioAna gain_db = {self.gain_db}dB")
+
+    def changeHistDur(self, newHistDur):
+        if newHistDur <= C_HIST_DUR_MIN:
+            self.hist_dur = C_HIST_DUR_MIN
+            #logging.info(f"AudioAna hist_dur = {self.hist_dur}s = MIN")
+        elif newHistDur >= C_HIST_DUR_MAX:
+            self.hist_dur = C_HIST_DUR_MAX
+            #logging.info(f"AudioAna hist_dur = {self.hist_dur}s = MAX")
+        else:
+            self.hist_dur = newHistDur
+            #logging.info(f"AudioAna hist_dur = {self.hist_dur}s")
 
     def stop(self):
         logging.info("AudioAnalyzer stop requested")
@@ -241,7 +277,7 @@ class AudioAnalyzer(QObject):
         # Remove DC element
         freq_list = np.delete(freq_list,0)
         ampl_list = np.delete(ampl_list,0)
-        ampl_list = ampl_list*2000/num_samp
+        ampl_list = ampl_list*2/num_samp * 10**(self.gain_db/20)
 
         # Apply Calibration
         apply_cal = self.apply_cal

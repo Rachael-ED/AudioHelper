@@ -175,7 +175,7 @@ class Ui_ui_AudioHelperGUI(object):
         sizePolicy.setHeightForWidth(self.knb_ana_gain.sizePolicy().hasHeightForWidth())
         self.knb_ana_gain.setSizePolicy(sizePolicy)
         self.knb_ana_gain.setMaximumSize(QtCore.QSize(16777215, 40))
-        self.knb_ana_gain.setMaximum(120)
+        self.knb_ana_gain.setMaximum(200)
         self.knb_ana_gain.setProperty("value", 60)
         self.knb_ana_gain.setObjectName("knb_ana_gain")
         self.gridLayout_2.addWidget(self.knb_ana_gain, 1, 0, 1, 1)

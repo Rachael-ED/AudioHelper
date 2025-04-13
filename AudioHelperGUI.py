@@ -47,6 +47,12 @@ C_SPEC_MIN_FREQ = 50       # [Hz]
 C_VOL_MAX_DB = 0
 C_VOL_MIN_DB = -60
 
+C_GAIN_MAX_DB = 200
+C_GAIN_MIN_DB = 0
+
+C_AVG_DUR_MAX = 10
+C_AVG_DUR_MIN = 0
+
 C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
 
@@ -253,7 +259,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.cmb_aud_gen_mode.setCurrentIndex(0)
 
         # Configure AudioAnalyzer Widgets
-        # ... nothing yet ...
+        self.txt_ana_gain.setValidator(QIntValidator())
+        self.txt_ana_avg.setValidator(QDoubleValidator())
 
         # Connect AudioGen Signals
         self.cmb_aud_gen_mode.currentTextChanged.connect(self.cmb_aud_gen_mode_currentTextChanged)
@@ -270,6 +277,14 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.sld_aud_gen_vol.valueChanged.connect(self.sld_aud_gen_vol_valueChanged)
         self.txt_aud_gen_vol.editingFinished.connect(self.txt_aud_gen_vol_editingFinished)
         self.txt_aud_gen_vol.textChanged.connect(self.txt_aud_gen_vol_textChanged)
+
+        self.knb_ana_avg.valueChanged.connect(self.knb_ana_avg_valueChanged)
+        self.txt_ana_avg.editingFinished.connect(self.txt_ana_avg_editingFinished)
+        #self.txt_ana_avg.textChanged.connect(self.txt_ana_avg_textChanged)
+
+        self.knb_ana_gain.valueChanged.connect(self.knb_ana_gain_valueChanged)
+        self.txt_ana_gain.editingFinished.connect(self.txt_ana_gain_editingFinished)
+        #self.txt_ana_gain.textChanged.connect(self.txt_ana_gain_textChanged)
 
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
@@ -834,6 +849,50 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def txt_aud_gen_vol_textChanged(self, newVolDB):
         self.buf_man.msgSend("Gen", "change_vol", newVolDB)
+
+    def knb_ana_gain_valueChanged(self, val):
+        # logging.info(f"AudioAnalyzer gain knob changed to {val}%")
+
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_val = int(self.txt_ana_gain.text())
+        if txt_val != val:
+            self.txt_ana_gain.setText(f"{val}")
+        self.buf_man.msgSend("Ana", "change_gain_db", val)
+
+    def txt_ana_gain_editingFinished(self):
+        val = int(self.txt_ana_gain.text())
+        val = max(val, C_GAIN_MIN_DB)
+        val = min(val, C_GAIN_MAX_DB)
+        #logging.info(f"AudioAnalyzer gain knob text changed to {val}%")
+
+        self.txt_ana_gain.setText(f"{val}")
+        self.knb_ana_gain.setValue(val)
+
+    #def txt_ana_gain_textChanged(self, newGainDB):
+    #    self.buf_man.msgSend("Ana", "change_gain", newGainDB)
+
+    def knb_ana_avg_valueChanged(self, val):
+        # logging.info(f"AudioAnalyzer averaging duration knob changed to {val}%")
+        val = val / 10
+
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_val = float(self.txt_ana_avg.text())
+        if txt_val != val:
+            self.txt_ana_avg.setText(f"{val}")
+
+        self.buf_man.msgSend("Ana", "change_hist_dur", val)
+
+    def txt_ana_avg_editingFinished(self):
+        val = float(self.txt_ana_avg.text())
+        val = max(val, C_AVG_DUR_MIN)
+        val = min(val, C_AVG_DUR_MAX)
+        #logging.info(f"AudioAnalyzer averaging duration knob text changed to {val}%")
+
+        self.txt_ana_avg.setText(f"{val}")
+        self.knb_ana_avg.setValue(val*10)
+
+    #def txt_ana_avg_textChanged(self, new_avg_dur):
+    #    self.buf_man.msgSend("Ana", "change_avg_dur", new_avg_dur)
 
     # ----------------------------------------------------------------------
     # AudioAnalyzer Interface
