@@ -12,13 +12,15 @@ import BufferManager as BufMan
 import numpy as np
 from scipy.fft import rfft, rfftfreq
 
+import csv
+
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
 C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
 
-C_SWEEP_DWELL_DUR = 0.2    # Time for each sweep tone [s]
+C_SWEEP_DWELL_DUR = 0.1    # Time for each sweep tone [s]
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -57,7 +59,7 @@ class AudioAnalyzer(QObject):
         self._stop_requested = False
         self.start_freq = C_FREQ_MIN
         self.stop_freq = C_FREQ_MAX
-        self.sweep_points = 100                  # was 100 but changed to 50 for testing
+        self.sweep_points = 100
         self.hist_dur = 3      # Length [seconds] of history buffer
         self.hist_list = []    # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
@@ -70,6 +72,8 @@ class AudioAnalyzer(QObject):
         self.numSweepFreqs = 0
         self.found = True
         self.freqFromMic = 0
+        self.pastPeaks = [np.nan] * 2
+        self.rejects = 0
 
     def msgHandler(self, buf_id):
         # Retrieve Message
@@ -103,12 +107,10 @@ class AudioAnalyzer(QObject):
             print("clearing")
             self.sweepFreqs = [np.nan] * self.sweep_points
             self.sweepAmpls = [np.nan] * self.sweep_points
-            self.numSweepFreqs = 0
 
         elif msg_type == "mic_data_sweep":
             self.freqFromMic = msg_data[1]
             self.analyze(msg_data[0])
-            print(self.freqFromMic)
 
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
@@ -172,6 +174,7 @@ class AudioAnalyzer(QObject):
     def analyze(self, voltageAndTime):
         # keep track of current sweep frequency
         currSweepFreq = self.freqFromMic
+        #currBuffSize = self.framesPerBuff
 
         # Retrieve buffer with mic waveform
         [time_list, volt_list] = voltageAndTime
@@ -187,6 +190,7 @@ class AudioAnalyzer(QObject):
         # Remove DC element
         freq_list = np.delete(freq_list,0)
         ampl_list = np.delete(ampl_list,0)
+        ampl_list = ampl_list * 2/num_samp
 
         # Apply Calibration
         apply_cal = self.apply_cal
@@ -202,31 +206,69 @@ class AudioAnalyzer(QObject):
 
 
         if (self.sweep_running == True):
-            distBtwnFreq = 2.69165039
-            i = int(currSweepFreq/distBtwnFreq)
+            distBtwnFreq = freq_list[1] - freq_list[0]
+            i = int(currSweepFreq/distBtwnFreq) - 1
 
-            largAmplInd = i
-            for x in range(-1, 2):
+            largAmplInd = 0
+            # loop through 7 elements
+            for x in range(-3, 4):
                 j = i + x
                 if ampl_list[j] > ampl_list[largAmplInd]:
+                    largAmplInd = j
+                    '''
                     if (freq_list[j] <= (currSweepFreq + distBtwnFreq)) and (freq_list[j] >= (currSweepFreq - distBtwnFreq)):
                         largAmplInd = j
+                    '''
 
-            if (freq_list[largAmplInd] <= (currSweepFreq + distBtwnFreq)) and (freq_list[largAmplInd] >= (currSweepFreq - distBtwnFreq)):
-                for k in range(0, len(self.sweepFreqs)):
-                    if self.sweepFreqs[k] == currSweepFreq:
-                        self.sweepAmpls[k] = ampl_list[largAmplInd]
-                        self.found = True
-                        break
-                    elif np.isnan(self.sweepFreqs[k]):
-                        self.sweepFreqs[k] = currSweepFreq
-                        self.sweepAmpls[k] = ampl_list[largAmplInd]
-                        self.found = True
-                        break
+            print(f"LargAmplInd: {largAmplInd}")
 
-            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
-            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+            if largAmplInd != i and largAmplInd != (i + 1) and largAmplInd != (i - 1):
+                self.found = False
+                self.rejects = self.rejects + 1
+                print(f"Reject Count: {self.rejects}")
+                self.pastPeaks = [np.nan] * 2
+                self.numSweepFreqs = 0
+            else:
+                print(f"NumSweepFreqs: {self.numSweepFreqs}")
+                if self.numSweepFreqs <= 1:
+                    if ampl_list[largAmplInd] != 0:
+                        self.pastPeaks[self.numSweepFreqs] = ampl_list[largAmplInd]
+                        print(f"Past Peaks: {self.pastPeaks}")
+                        self.numSweepFreqs = self.numSweepFreqs + 1
+                elif self.numSweepFreqs == 2:
+                    self.pastPeaks[0] = self.pastPeaks[1]
+                    self.numSweepFreqs = 1
 
+                if abs(20*np.log10(self.pastPeaks[0]) - 20*np.log10(self.pastPeaks[1])) < 0.5:
+                    for k in range(0, len(self.sweepFreqs)):
+                        if self.sweepFreqs[k] == currSweepFreq:
+                            self.sweepAmpls[k] = ampl_list[largAmplInd]
+                            self.found = True
+
+                            with open('/Users/rachael/PycharmProjects/AudioHelper/temp.csv', mode='a') as csv_file:
+                                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                                #csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
+                                csv_writer.writerow([k, currSweepFreq, freq_list[largAmplInd], ampl_list[largAmplInd]])
+
+                            self.rejects = 0
+                            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+                            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+                            break
+                        elif np.isnan(self.sweepFreqs[k]):
+                            self.sweepFreqs[k] = currSweepFreq
+                            self.sweepAmpls[k] = ampl_list[largAmplInd]
+                            self.found = True
+
+                            with open('/Users/rachael/PycharmProjects/AudioHelper/temp.csv', mode='a') as csv_file:
+                                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                                #csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
+                                csv_writer.writerow([k, currSweepFreq, freq_list[largAmplInd], ampl_list[largAmplInd]])
+
+
+                            self.rejects = 0
+                            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+                            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+                            break
 
 
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
@@ -248,7 +290,7 @@ class AudioAnalyzer(QObject):
             elif len(hist_ampl_list) != len(avg_ampl_list):
                 calc_err = 1
             else:
-                avg_ampl_list += np.log(np.clip(hist_ampl_list,1e-6, None))   # Sum up all logs, avoiding 0
+                avg_ampl_list += np.log(np.clip(hist_ampl_list,1e-12, None))   # Sum up all logs, avoiding 0
         if calc_err == 1:
             avg_ampl_list = ampl_list
             self.hist_list = []
@@ -290,6 +332,9 @@ class AudioAnalyzer(QObject):
             if self.sweep_on:
 
                 if self.found == True:
+                    self.numSweepFreqs = 0
+                    self.pastPeaks = [np.nan] * 2
+
                     # --- Get Sweep Started ---
                     if not self.sweep_running:
                         logging.info(f"{self.name}: AudioAnalyzer sweep started.")
@@ -320,6 +365,9 @@ class AudioAnalyzer(QObject):
                 logging.info(f"{self.name}: AudioAnalyzer sweep stopped.")
                 self.sweep_running = False
                 self.buf_man.msgSend("Gen", "play_tone", 0)    # Turn off Gen
+                self.pastPeaks = [np.nan] * 2
+                self.sweepFreqs = [np.nan] * self.sweep_points
+                self.sweepAmpls = [np.nan] * self.sweep_points
 
         logging.info("AudioAnalyzer finished")
         self.finished.emit()
