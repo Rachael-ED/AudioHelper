@@ -6,9 +6,27 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>661</width>
-    <height>581</height>
+    <width>700</width>
+    <height>600</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>700</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>700</width>
+    <height>600</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Form</string>
@@ -18,11 +36,14 @@
     <rect>
      <x>10</x>
      <y>10</y>
-     <width>641</width>
-     <height>563</height>
+     <width>677</width>
+     <height>578</height>
     </rect>
    </property>
-   <layout class="QGridLayout" name="gridLayout" rowstretch="1,0" columnstretch="1,6">
+   <layout class="QGridLayout" name="gridLayout" columnstretch="1,6" rowminimumheight="430,120" columnminimumwidth="180,380">
+    <property name="sizeConstraint">
+     <enum>QLayout::SetMinimumSize</enum>
+    </property>
     <item row="1" column="1">
      <layout class="QVBoxLayout" name="verticalLayout">
       <property name="rightMargin">
@@ -30,6 +51,9 @@
       </property>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,4,1,0">
+        <property name="spacing">
+         <number>2</number>
+        </property>
         <item>
          <layout class="QVBoxLayout" name="verticalLayout_6">
           <property name="spacing">
@@ -275,6 +299,9 @@
     </item>
     <item row="0" column="0">
      <layout class="QVBoxLayout" name="verticalLayout_4">
+      <property name="spacing">
+       <number>0</number>
+      </property>
       <item alignment="Qt::AlignHCenter|Qt::AlignTop">
        <widget class="QLabel" name="img_herman">
         <property name="enabled">
@@ -307,19 +334,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <spacer name="horizontalSpacer_3">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
       <item alignment="Qt::AlignVCenter">
        <widget class="QPushButton" name="btn_aud_ana_enable">
         <property name="sizePolicy">
@@ -332,6 +346,154 @@
          <string>Freeze</string>
         </property>
        </widget>
+      </item>
+      <item>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <property name="spacing">
+         <number>2</number>
+        </property>
+        <item row="1" column="0">
+         <widget class="QDial" name="knb_ana_gain">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="maximum">
+           <number>200</number>
+          </property>
+          <property name="value">
+           <number>60</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDial" name="knb_ana_avg">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="maximum">
+           <number>100</number>
+          </property>
+          <property name="singleStep">
+           <number>5</number>
+          </property>
+          <property name="pageStep">
+           <number>10</number>
+          </property>
+          <property name="value">
+           <number>30</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="lbl_ana_gain">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Gain</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLabel" name="lbl_ana_avg">
+          <property name="text">
+           <string>Averaging</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLineEdit" name="txt_ana_gain">
+            <property name="text">
+             <string>60</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lbl_ana_gain_unit">
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+             </font>
+            </property>
+            <property name="text">
+             <string>dB</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item row="2" column="1">
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QLineEdit" name="txt_ana_avg">
+            <property name="text">
+             <string>3</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lbl_ana_avg_unit">
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+             </font>
+            </property>
+            <property name="text">
+             <string>s</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
       <item>
        <spacer name="horizontalSpacer_4">
@@ -347,75 +509,102 @@
        </spacer>
       </item>
       <item>
-       <layout class="QVBoxLayout" name="verticalLayout_7">
-        <property name="spacing">
-         <number>0</number>
+       <widget class="QComboBox" name="cmb_aud_ana_cal">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
         </property>
-        <item>
-         <widget class="QPushButton" name="btn_load_data">
-          <property name="text">
-           <string>Load</string>
+       </widget>
+      </item>
+      <item>
+       <layout class="QGridLayout" name="gridLayout_3">
+        <property name="spacing">
+         <number>2</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QPushButton" name="btn_showhide_data">
+          <property name="enabled">
+           <bool>false</bool>
           </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="horizontalSpacer_7">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
+          <property name="minimumSize">
            <size>
-            <width>40</width>
-            <height>20</height>
+            <width>70</width>
+            <height>0</height>
            </size>
           </property>
-         </spacer>
-        </item>
-        <item>
-         <widget class="QComboBox" name="cmb_aud_ana_cal">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
+          <property name="text">
+           <string>Hide</string>
           </property>
          </widget>
         </item>
-        <item>
+        <item row="1" column="0">
          <widget class="QPushButton" name="btn_clear_data">
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
           <property name="text">
            <string>Clear</string>
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QPushButton" name="btn_aud_ana_cal">
-          <property name="text">
-           <string>Calibrate</string>
-          </property>
-         </widget>
-        </item>
-        <item>
+        <item row="2" column="0">
          <widget class="QPushButton" name="btn_save_data">
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
           <property name="text">
            <string>Save</string>
           </property>
          </widget>
         </item>
+        <item row="0" column="1">
+         <widget class="QPushButton" name="btn_aud_ana_cal">
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Calibrate</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QPushButton" name="btn_load_data">
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Load</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QPushButton" name="btn_copy_data">
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Copy</string>
+          </property>
+         </widget>
+        </item>
        </layout>
-      </item>
-      <item>
-       <spacer name="horizontalSpacer_5">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
       </item>
      </layout>
     </item>
@@ -425,7 +614,7 @@
        <number>0</number>
       </property>
       <item>
-       <spacer name="horizontalSpacer_6">
+       <spacer name="horizontalSpacer_3">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>

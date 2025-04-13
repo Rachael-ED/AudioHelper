@@ -172,6 +172,7 @@ class MicReader(QObject):
         stream.stop_stream()
         stream.close()
         micInput.terminate()
+        time.sleep(2)    # Give some time for everything to collapse
         self.finished.emit()
 
 

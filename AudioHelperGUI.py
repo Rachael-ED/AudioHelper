@@ -6,6 +6,8 @@ import time
 import logging
 import re
 import os
+import traceback
+from datetime import datetime
 
 import numpy as np
 
@@ -44,6 +46,12 @@ C_SPEC_MIN_FREQ = 50       # [Hz]
 
 C_VOL_MAX_DB = 0
 C_VOL_MIN_DB = -60
+
+C_GAIN_MAX_DB = 200
+C_GAIN_MIN_DB = 0
+
+C_AVG_DUR_MAX = 10
+C_AVG_DUR_MIN = 0
 
 C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
@@ -171,6 +179,35 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.sweepFreqs = []
         self.sweepAmpls = []
 
+        # Set Up Dictionary with Default Values for Standard Lines
+        self.line_def_dict = {
+            "Live": {
+                "colour": "tab:blue",
+                "zorder": 2,
+                "alpha": 1
+            },
+            "Avg": {
+                "colour": "tab:orange",
+                "zorder": 2.1,
+                "alpha": 0.8
+            },
+            "Cal": {
+                "colour": "tab:green",
+                "zorder": 2.2,
+                "alpha": 0.7
+            },
+            "Sweep": {
+                "colour": "tab:red",
+                "zorder": 2.3,
+                "alpha": 0.7
+            },
+        }
+
+        # Plot Colours
+        #     Used for plots other than the standard lines
+        self.line_colours = ['tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+        self.next_line_colour_ind = 0
+
         # Create Buffer Manager
         self.name = name
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
@@ -208,7 +245,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.plt_ax = plt_canvas.figure.subplots()
         self.plt_ax.grid(visible=True, which='both', axis='x')
         self.plt_ax.grid(visible=True, which='major', axis='y')
-        #self.plt_ax.semilogx()
+        self.plt_ax.semilogx()
         self.plt_ax.set_xlabel('Frequency [Hz]', size="small")
         self.plt_ax.set_ylabel('Amplitude [dB]', size="small")
         self.plt_ax.set_ylim(C_SPEC_MIN_DB, C_SPEC_MAX_DB)
@@ -226,7 +263,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.cmb_aud_gen_mode.setCurrentIndex(0)
 
         # Configure AudioAnalyzer Widgets
-        # ... nothing yet ...
+        self.txt_ana_gain.setValidator(QIntValidator())
+        self.txt_ana_avg.setValidator(QDoubleValidator())
 
         # Connect AudioGen Signals
         self.cmb_aud_gen_mode.currentTextChanged.connect(self.cmb_aud_gen_mode_currentTextChanged)
@@ -244,8 +282,18 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.txt_aud_gen_vol.editingFinished.connect(self.txt_aud_gen_vol_editingFinished)
         self.txt_aud_gen_vol.textChanged.connect(self.txt_aud_gen_vol_textChanged)
 
+        self.knb_ana_avg.valueChanged.connect(self.knb_ana_avg_valueChanged)
+        self.txt_ana_avg.editingFinished.connect(self.txt_ana_avg_editingFinished)
+        #self.txt_ana_avg.textChanged.connect(self.txt_ana_avg_textChanged)
+
+        self.knb_ana_gain.valueChanged.connect(self.knb_ana_gain_valueChanged)
+        self.txt_ana_gain.editingFinished.connect(self.txt_ana_gain_editingFinished)
+        #self.txt_ana_gain.textChanged.connect(self.txt_ana_gain_textChanged)
+
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
+
+        self.cmb_aud_ana_cal.currentTextChanged.connect(self.cmb_aud_ana_cal_currentTextChanged)
 
         self.btn_setup.clicked.connect(self.setup_btn_click)
 
@@ -257,6 +305,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.btn_load_data.clicked.connect(self.btn_load_data_click)
         self.btn_save_data.clicked.connect(self.btn_save_data_click)
         self.btn_clear_data.clicked.connect(self.btn_clear_data_click)
+        self.btn_copy_data.clicked.connect(self.btn_copy_data_click)
+        self.btn_showhide_data.clicked.connect(self.btn_showhide_data_click)
 
         self.btn_help.clicked.connect(self.btn_help_click)
 
@@ -448,6 +498,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             logging.info(f"Clearing Calibration")
             self.buf_man.msgSend("Ana", "apply_cal", None)
             self.btn_aud_ana_cal.setText("Calibrate")
+            self.remove_plot("Cal")
 
     def btn_load_data_click(self):
         (fname, filt) = QFileDialog.getOpenFileName(self, "Load data", None, 'Csv Files (*.csv);;All Files (*)')
@@ -536,6 +587,91 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         name = self.cmb_aud_ana_cal.currentText()
         logging.info(f"Clicked Clear Data: {name}")
         self.remove_plot(name)
+
+    def btn_copy_data_click(self):
+        src_name = self.cmb_aud_ana_cal.currentText()
+        logging.info(f"Clicked Copy Data: {src_name}")
+
+        # Capture Data to Store Right Away
+        # If it's live, it might be changing...
+        if not src_name in self.line_dict:
+            return
+        freq_list = np.copy(self.line_dict[src_name]["freq_list"])
+        ampl_list = np.copy(self.line_dict[src_name]["ampl_list"])
+
+        # Get Name for New Series
+        def_name = src_name + datetime.now().strftime("_%y%m%d_%H%M%S")
+        name, input_ok = QInputDialog.getText(self, 'Copy Data', 'Enter the new name for the data:', text=def_name)
+        if not input_ok:
+            return
+        if name is None:
+            return
+        if name in self.line_dict.keys():
+            self.MsgBox(f"Data already loaded for {name}", "Error")
+            return
+
+        # Add Plot
+        self.update_plot(name, freq_list, ampl_list)
+
+    def btn_showhide_data_click(self):
+        name = self.cmb_aud_ana_cal.currentText()
+        logging.info(f"Clicked Show/Hide Data: {name}")
+
+        if not (name in self.line_dict.keys()):          # Line doesn't exist
+            return
+        if self.btn_showhide_data.text() == "Show":
+            self.show_plot(name)
+        elif self.btn_showhide_data.text() == "Hide":
+            self.hide_plot(name)
+
+        self.btn_showhideclear_update()
+
+    def cmb_aud_ana_cal_currentTextChanged(self):
+        self.btn_showhideclear_update()
+
+    def btn_showhideclear_update(self):
+        #logging.info(f"Called btn_showhideclear_update()\n{traceback.print_stack()}")
+
+        name = self.cmb_aud_ana_cal.currentText()
+        if (len(self.line_dict) < 1) or (name is None) or (not (name in self.line_dict.keys())):  # Line doesn't exist
+            self.btn_showhide_data.setEnabled(False)
+            self.btn_clear_data.setEnabled(False)
+            self.btn_save_data.setEnabled(False)
+            self.btn_aud_ana_cal.setEnabled(False)
+            return
+
+        self.btn_save_data.setEnabled(True)              # If it exists, it can be saved
+
+        num_lines_shown = 0
+        cal_is_shown = False
+        for nm in self.line_dict.keys():
+            if "line_obj" in self.line_dict[nm]:
+                num_lines_shown = num_lines_shown + 1
+                if nm == "Cal":
+                    cal_is_shown = True
+
+        if self.btn_aud_ana_cal.text() == "Calibrate":
+            self.btn_aud_ana_cal.setEnabled(True)
+        else:
+            if (num_lines_shown == 1) and cal_is_shown:    # Don't allow Cal Clear cause nothing in the window
+                self.btn_aud_ana_cal.setEnabled(False)
+            else:
+                self.btn_aud_ana_cal.setEnabled(True)
+
+        if "line_obj" in self.line_dict[name]:           # Line already shown
+            self.btn_showhide_data.setText("Hide")
+
+            if num_lines_shown > 1:                          # It's not the only line shown
+                self.btn_showhide_data.setEnabled(True)
+                self.btn_clear_data.setEnabled(True)
+            else:                                           # It's the only line shown
+                self.btn_showhide_data.setEnabled(False)
+                self.btn_clear_data.setEnabled(False)
+
+        else:                                            # Line is hidden
+            self.btn_showhide_data.setText("Show")
+            self.btn_showhide_data.setEnabled(True)
+            self.btn_clear_data.setEnabled(True)
 
     def set_silence(self):
         logging.info("Stopping all sound")
@@ -719,6 +855,50 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     def txt_aud_gen_vol_textChanged(self, newVolDB):
         self.buf_man.msgSend("Gen", "change_vol", newVolDB)
 
+    def knb_ana_gain_valueChanged(self, val):
+        # logging.info(f"AudioAnalyzer gain knob changed to {val}%")
+
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_val = int(self.txt_ana_gain.text())
+        if txt_val != val:
+            self.txt_ana_gain.setText(f"{val}")
+        self.buf_man.msgSend("Ana", "change_gain_db", val)
+
+    def txt_ana_gain_editingFinished(self):
+        val = int(self.txt_ana_gain.text())
+        val = max(val, C_GAIN_MIN_DB)
+        val = min(val, C_GAIN_MAX_DB)
+        #logging.info(f"AudioAnalyzer gain knob text changed to {val}%")
+
+        self.txt_ana_gain.setText(f"{val}")
+        self.knb_ana_gain.setValue(val)
+
+    #def txt_ana_gain_textChanged(self, newGainDB):
+    #    self.buf_man.msgSend("Ana", "change_gain", newGainDB)
+
+    def knb_ana_avg_valueChanged(self, val):
+        # logging.info(f"AudioAnalyzer averaging duration knob changed to {val}%")
+        val = val / 10
+
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_val = float(self.txt_ana_avg.text())
+        if txt_val != val:
+            self.txt_ana_avg.setText(f"{val}")
+
+        self.buf_man.msgSend("Ana", "change_hist_dur", val)
+
+    def txt_ana_avg_editingFinished(self):
+        val = float(self.txt_ana_avg.text())
+        val = max(val, C_AVG_DUR_MIN)
+        val = min(val, C_AVG_DUR_MAX)
+        #logging.info(f"AudioAnalyzer averaging duration knob text changed to {val}%")
+
+        self.txt_ana_avg.setText(f"{val}")
+        self.knb_ana_avg.setValue(val*10)
+
+    #def txt_ana_avg_textChanged(self, new_avg_dur):
+    #    self.buf_man.msgSend("Ana", "change_avg_dur", new_avg_dur)
+
     # ----------------------------------------------------------------------
     # AudioAnalyzer Interface
     #
@@ -734,8 +914,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def update_plot(self, name, freq_list, ampl_list):
 
-        # Tranlsate to dB
-        ampldb_list = np.clip(ampl_list, 1e-12, None)        # np.log10() won't like 0s
+        # Translate to dB
+        ampldb_list = np.clip(ampl_list, 1e-12, None)       # np.log10() won't like 0s
         ampldb_list = 20 * np.log10(ampldb_list)                         # Translate to dB
         ampldb_list = np.clip(ampldb_list, C_SPEC_MIN_DB, C_SPEC_MAX_DB) # Limit to plot range
 
@@ -754,12 +934,26 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         # Add New Plot Line
         else:
             ###logging.info(f"Adding plot line: {name}")
-            plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label = name)
+            colour = ""
+            alpha = 0.5
+            zorder = 2.5 + len(self.line_def_dict)/100   # On top of standard lines
+            if name in self.line_def_dict.keys():
+                colour = self.line_def_dict[name]["colour"]
+                alpha = self.line_def_dict[name]["alpha"]
+                zorder = self.line_def_dict[name]["zorder"]
+            else:
+                colour = self.line_colours[self.next_line_colour_ind]
+                self.next_line_colour_ind = (self.next_line_colour_ind + 1) % len(self.line_colours)
+            plt_refs = self .plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
+
             self.line_dict[name] = {
                 "line_obj": plt_refs[0],     # Store Line2D object to reference layer
                 "freq_list": freq_list,
                 "ampl_list": ampl_list,
-                "ampldb_list": ampldb_list
+                "ampldb_list": ampldb_list,
+                "colour": colour,
+                "alpha": alpha,
+                "zorder": zorder
             }
 
             if len(self.line_dict) <= 1:
@@ -769,6 +963,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.plt_ax.legend(fontsize="small")
             self.cmb_aud_ana_cal.addItem(name)
+            self.btn_showhideclear_update()
 
             plt_refs[0].figure.canvas.draw()
 
@@ -794,6 +989,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
             self.plt_ax.get_figure().canvas.draw()
 
+            self.btn_showhideclear_update()
+
     def hide_plot(self, name):
         if not (name in self.line_dict.keys()):          # Line doesn't exist
             return
@@ -805,6 +1002,8 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.line_dict[name].pop("line_obj")
         self.plt_ax.legend(fontsize="small")
         self.plt_ax.get_figure().canvas.draw()
+
+        self.btn_showhideclear_update()
 
     def show_plot(self, name):
         if not (name in self.line_dict.keys()):          # Line doesn't exist
@@ -818,13 +1017,18 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
         freq_list = self.line_dict[name]["freq_list"]
         ampldb_list = self.line_dict[name]["ampldb_list"]
+        colour = self.line_dict[name]["colour"]
+        zorder = self.line_dict[name]["zorder"]
+        alpha = self.line_dict[name]["alpha"]
 
-        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, label=name)
+        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
         self.line_dict[name]["line_obj"] = plt_refs[0]  # Store Line2D object to reference layer
 
         self.plt_ax.legend(fontsize="small")
 
         plt_refs[0].figure.canvas.draw()
+
+        self.btn_showhideclear_update()
 
 # ==============================================================================
 # MODULE TESTBENCH
