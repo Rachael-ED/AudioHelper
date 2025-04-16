@@ -37,8 +37,8 @@ matplotlib.use('Qt5Agg')
 #
 C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep']
 
-C_SPEC_MAX_DB = 0
-C_SPEC_MIN_DB = -200
+C_SPEC_MAX_DB = 80
+C_SPEC_MIN_DB = -80
 C_SPEC_GRID_DB = 10
 
 C_SPEC_MAX_FREQ = 20000    # [Hz]
