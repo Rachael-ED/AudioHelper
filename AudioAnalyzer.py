@@ -319,6 +319,12 @@ class AudioAnalyzer(QObject):
 
 
         if (self.sweep_running == True):
+            with open('/Users/rachael/PycharmProjects/AudioHelper/temp.csv', mode='a') as csv_file:
+                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                # csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
+                csv_writer.writerow([freq_list])
+                csv_writer.writerow([ampl_list])
+
             distBtwnFreq = freq_list[1] - freq_list[0]
             i = int(currSweepFreq/distBtwnFreq) - 1
 
@@ -328,10 +334,6 @@ class AudioAnalyzer(QObject):
                 j = i + x
                 if ampl_list[j] > ampl_list[largAmplInd]:
                     largAmplInd = j
-                    '''
-                    if (freq_list[j] <= (currSweepFreq + distBtwnFreq)) and (freq_list[j] >= (currSweepFreq - distBtwnFreq)):
-                        largAmplInd = j
-                    '''
 
             print(f"LargAmplInd: {largAmplInd}")
 
@@ -358,11 +360,6 @@ class AudioAnalyzer(QObject):
                             self.sweepAmpls[k] = ampl_list[largAmplInd]
                             self.found = True
 
-                            with open('/Users/rachael/PycharmProjects/AudioHelper/temp.csv', mode='a') as csv_file:
-                                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                                #csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
-                                csv_writer.writerow([k, currSweepFreq, freq_list[largAmplInd], ampl_list[largAmplInd]])
-
                             self.rejects = 0
                             spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
                             self.buf_man.msgSend("Guido", "plot_data", spec_buf)
@@ -371,13 +368,6 @@ class AudioAnalyzer(QObject):
                             self.sweepFreqs[k] = currSweepFreq
                             self.sweepAmpls[k] = ampl_list[largAmplInd]
                             self.found = True
-
-                            with open('/Users/rachael/PycharmProjects/AudioHelper/temp.csv', mode='a') as csv_file:
-                                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                                #csv_writer.writerow(['Freq [Hz]', 'Amplitude [1]', 'Amplitude [dB]'])
-                                csv_writer.writerow([k, currSweepFreq, freq_list[largAmplInd], ampl_list[largAmplInd]])
-
-
                             self.rejects = 0
                             spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
                             self.buf_man.msgSend("Guido", "plot_data", spec_buf)
@@ -386,6 +376,7 @@ class AudioAnalyzer(QObject):
 
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
+        '''
         # Calc Average Amplitude Over History Buffer
         #     Here, we'll calc the average in a "log sense".
         #     That is, for each frequency in the spectrum, we'll calc the following over all N buffers in the history:
@@ -409,6 +400,7 @@ class AudioAnalyzer(QObject):
         # Send Average Amplitude to Guido
         spec_buf = ["Avg", avg_freq_list, avg_ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+        '''
 
         # Capture Calibration Data to Apply Next Time
         if apply_cal == None:
@@ -474,6 +466,7 @@ class AudioAnalyzer(QObject):
                 self.pastPeaks = [np.nan] * 2
                 self.sweepFreqs = [np.nan] * self.sweep_points
                 self.sweepAmpls = [np.nan] * self.sweep_points
+                self.found = True
 
         logging.info("AudioAnalyzer finished")
         self.finished.emit()
