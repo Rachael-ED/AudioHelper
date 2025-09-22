@@ -57,6 +57,19 @@ C_FREQ_MAX = 20000
 C_FREQ_MIN = 50
 
 # ==============================================================================
+# CLASS: HELP
+#
+class HelpWindow(QDialog):
+    def __init__(self):
+        super().__init__()
+
+    def initFunction(self):
+        helpWindow = QLabel("Hey user! Need help? Too bad! :)")
+        layout = QGridLayout()
+        layout.addWidget(helpWindow, 0, 1)
+        self.setLayout(layout)
+
+# ==============================================================================
 # CLASS: SETUP WINDOW
 #
 class SetupWindow(QDialog):
@@ -438,15 +451,12 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
     #
 
     def btn_help_click(self):
-        logging.info(f"Clicked the Help button")
+        helpWin = HelpWindow()
+        helpWin.win = self
+        helpWin.initFunction()
+        helpWin.exec()
 
-        name = "Avg"
-        if "line_obj" in self.line_dict[name]:
-            #self.hide_plot(name)
-            self.buf_man.msgSend("Guido", "hide_plot", name)
-        else:
-            #self.show_plot(name)
-            self.buf_man.msgSend("Guido", "show_plot", name)
+        logging.info(f"Clicked the Help button")
 
     def setup_btn_click(self):
         setupWin = SetupWindow()
