@@ -283,6 +283,7 @@ class AudioAnalyzer(QObject):
 
     def analyze(self, voltageAndTime):
         # keep track of current sweep frequency
+        print("getting new frequency from mic")
         currSweepFreq = self.freqFromMic
         #currBuffSize = self.framesPerBuff
 
@@ -313,6 +314,8 @@ class AudioAnalyzer(QObject):
         # Add to History
         self.hist_add(freq_list, ampl_list)
 
+
+        print("sending to guido")
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
@@ -329,20 +332,20 @@ class AudioAnalyzer(QObject):
                 if ampl_list[j] > ampl_list[largAmplInd]:
                     largAmplInd = j
 
-            print(f"LargAmplInd: {largAmplInd}")
+            #print(f"LargAmplInd: {largAmplInd}")
 
             if largAmplInd != i and largAmplInd != (i + 1) and largAmplInd != (i - 1):
                 self.found = False
                 self.rejects = self.rejects + 1
-                print(f"Reject Count: {self.rejects}")
+                #print(f"Reject Count: {self.rejects}")
                 self.pastPeaks = [np.nan] * 2
                 self.numSweepFreqs = 0
             else:
-                print(f"NumSweepFreqs: {self.numSweepFreqs}")
+                #print(f"NumSweepFreqs: {self.numSweepFreqs}")
                 if self.numSweepFreqs <= 1:
                     if ampl_list[largAmplInd] != 0:
                         self.pastPeaks[self.numSweepFreqs] = ampl_list[largAmplInd]
-                        print(f"Past Peaks: {self.pastPeaks}")
+                        #print(f"Past Peaks: {self.pastPeaks}")
                         self.numSweepFreqs = self.numSweepFreqs + 1
                 elif self.numSweepFreqs == 2:
                     self.pastPeaks[0] = self.pastPeaks[1]
@@ -446,7 +449,8 @@ class AudioAnalyzer(QObject):
                     # --- Determine Next Sweep Tone ---
                     # When we're done, we'll generate 0, which stops Gen
                     self.sweep_freq = self.sweep_freq * sweep_freq_mult
-                    if self.sweep_freq >= self.stop_freq:
+                    print(f"sweep freq: {self.sweep_freq}")
+                    if np.floor(self.sweep_freq) > (self.stop_freq * sweep_freq_mult):
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
                         self.sweep(False)
