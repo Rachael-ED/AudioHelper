@@ -25,6 +25,9 @@ C_FREQ_MIN = 50
 C_GAIN_MAX_DB = 200
 C_GAIN_MIN_DB = 0
 
+C_SWEEP_POINTS_MAX = 100
+C_SWEEP_POINTS_MIN = 1
+
 C_HIST_DUR_MAX = 10    # Same as C_AVG_DUR_MAX in Guido
 C_HIST_DUR_MIN = 0     # Same as C_AVG_DUR_MIN in Guido
 
@@ -115,6 +118,9 @@ class AudioAnalyzer(QObject):
         elif msg_type == "change_gain_db":
             self.changeGainDb(msg_data)
 
+        elif msg_type == "change_sweep_points":
+            self.changeSweepPoints(msg_data)
+
         elif msg_type == "change_hist_dur":
             self.changeHistDur(msg_data)
 
@@ -180,6 +186,19 @@ class AudioAnalyzer(QObject):
         else:
             self.gain_db = newGainDb
             #logging.info(f"AudioAna gain_db = {self.gain_db}dB")
+
+    def changeSweepPoints(self, newSweepPoints):
+        if re.search('^[+-]?\d+(\.\d+)?$', newSweepPoints):
+            newSweepPoints = int(newSweepPoints)   # Translate string to number
+            if newSweepPoints <= C_SWEEP_POINTS_MIN:
+                self.sweep_points = C_SWEEP_POINTS_MIN
+                #logging.info(f"AudioAna sweep_points = {self.sweep_points} = MIN")
+            elif newSweepPoints >= C_SWEEP_POINTS_MAX:
+                self.sweep_points = C_SWEEP_POINTS_MAX
+                #logging.info(f"AudioAna sweep_points = {self.sweep_points} = MAX")
+            else:
+                self.sweep_points = newSweepPoints
+                #logging.info(f"AudioAna sweep_points = {self.sweep_points}")
 
     def changeHistDur(self, newHistDur):
         if newHistDur <= C_HIST_DUR_MIN:
@@ -468,7 +487,9 @@ class AudioAnalyzer(QObject):
                         if self.start_freq > self.stop_freq:
                             (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
                         self.sweep_freq = self.start_freq
-                        sweep_freq_mult = (self.stop_freq / self.start_freq) ** (1/(self.sweep_points-1))
+                        sweep_freq_mult = 1
+                        if self.sweep_points > 1:
+                            sweep_freq_mult = (self.stop_freq / self.start_freq) ** (1/(self.sweep_points-1))
 
                     # --- Generate Sweep Tone ---
                     logging.info(f"{self.name}: AudioAnalyzer sweep generating {self.sweep_freq}Hz.")
@@ -480,7 +501,7 @@ class AudioAnalyzer(QObject):
                     # --- Determine Next Sweep Tone ---
                     # When we're done, we'll generate 0, which stops Gen
                     self.sweep_freq = self.sweep_freq * sweep_freq_mult
-                    print(f"sweep freq: {self.sweep_freq}")
+                    print(f"next sweep freq: {self.sweep_freq}")
                     if np.floor(self.sweep_freq) > (self.stop_freq * sweep_freq_mult):
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")

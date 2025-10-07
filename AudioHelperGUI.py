@@ -47,6 +47,9 @@ C_SPEC_MIN_FREQ = 50       # [Hz]
 C_VOL_MAX_DB = 0
 C_VOL_MIN_DB = -60
 
+C_STEPS_MAX = 100
+C_STEPS_MIN = 1
+
 C_GAIN_MAX_DB = 200
 C_GAIN_MIN_DB = 0
 
@@ -108,7 +111,7 @@ class SetupWindow(QDialog):
 
         # label inputs and outputs
         inputLabel = QLabel("Select Input:")
-        outputLabel = QLabel("Select Ouptut:")
+        outputLabel = QLabel("Select Output:")
 
         # Add cancel and Save buttons
         options = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -271,6 +274,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.txt_aud_gen_freq1.setValidator(QDoubleValidator())
         self.txt_aud_gen_freq2.setValidator(QDoubleValidator())
         self.txt_aud_gen_vol.setValidator(QIntValidator())
+        self.txt_aud_gen_steps.setValidator(QIntValidator())
 
         self.cmb_aud_gen_mode.addItems(C_AUD_GEN_MODE_LIST)
         self.cmb_aud_gen_mode.setCurrentIndex(0)
@@ -294,6 +298,10 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.sld_aud_gen_vol.valueChanged.connect(self.sld_aud_gen_vol_valueChanged)
         self.txt_aud_gen_vol.editingFinished.connect(self.txt_aud_gen_vol_editingFinished)
         self.txt_aud_gen_vol.textChanged.connect(self.txt_aud_gen_vol_textChanged)
+
+        self.sld_aud_gen_steps.valueChanged.connect(self.sld_aud_gen_steps_valueChanged)
+        self.txt_aud_gen_steps.editingFinished.connect(self.txt_aud_gen_steps_editingFinished)
+        self.txt_aud_gen_steps.textChanged.connect(self.txt_aud_gen_steps_textChanged)
 
         self.knb_ana_avg.valueChanged.connect(self.knb_ana_avg_valueChanged)
         self.txt_ana_avg.editingFinished.connect(self.txt_ana_avg_editingFinished)
@@ -375,13 +383,17 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
                 elif (param == "vol"):
                     self.txt_aud_gen_vol.setText(val)
                     self.txt_aud_gen_vol_editingFinished()
+                elif (param == "steps"):
+                    self.txt_aud_gen_steps.setText(val)
+                    self.txt_aud_gen_steps_editingFinished()
 
         elif msg_type == "REQ_cfg_save":
             ack_data = {
                 "mode": self.cmb_aud_gen_mode.currentText(),
                 "freq1": self.txt_aud_gen_freq1.text(),
                 "freq2": self.txt_aud_gen_freq2.text(),
-                "vol": self.txt_aud_gen_vol.text()
+                "vol": self.txt_aud_gen_vol.text(),
+                "steps": self.txt_aud_gen_steps.text()
             }
 
         elif (msg_type == "MsgBox") or (msg_type == "REQ_MsgBox"):
@@ -694,6 +706,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.txt_aud_gen_freq2.setEnabled(False)
             self.lbl_aud_gen_freq2_unit.setEnabled(False)
 
+            self.lbl_aud_gen_steps.setEnabled(False)
+            self.sld_aud_gen_steps.setEnabled(False)
+            self.txt_aud_gen_steps.setEnabled(False)
+            self.lbl_aud_gen_steps_unit.setEnabled(False)
+
             ###val = self.sld_aud_gen_freq1.value()
             ###self.sld_aud_gen_freq2.setValue(val)
             val = self.txt_aud_gen_freq1.text()
@@ -708,6 +725,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.txt_aud_gen_freq2.setEnabled(True)
             self.lbl_aud_gen_freq2_unit.setEnabled(True)
 
+            self.lbl_aud_gen_steps.setEnabled(False)
+            self.sld_aud_gen_steps.setEnabled(False)
+            self.txt_aud_gen_steps.setEnabled(False)
+            self.lbl_aud_gen_steps_unit.setEnabled(False)
+
             self.btn_aud_gen_enable.setText("Play")
 
         elif mode == "Sweep":
@@ -715,6 +737,11 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.sld_aud_gen_freq2.setEnabled(True)
             self.txt_aud_gen_freq2.setEnabled(True)
             self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.lbl_aud_gen_steps.setEnabled(True)
+            self.sld_aud_gen_steps.setEnabled(True)
+            self.txt_aud_gen_steps.setEnabled(True)
+            self.lbl_aud_gen_steps_unit.setEnabled(True)
 
             self.btn_aud_gen_enable.setText("Sweep")
 
@@ -747,6 +774,7 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
             self.buf_man.msgSend("Ana", "change_start_freq", self.txt_aud_gen_freq1.text())
             self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq2.text())
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
+            self.buf_man.msgSend("Ana", "change_sweep_points", self.txt_aud_gen_steps.text())
             self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
             self.buf_man.msgSend("Ana", "clear_sweep", None)
@@ -864,6 +892,26 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     def txt_aud_gen_vol_textChanged(self, newVolDB):
         self.buf_man.msgSend("Gen", "change_vol", newVolDB)
+
+    def sld_aud_gen_steps_valueChanged(self, steps):
+        # logging.info(f"Sweep steps slider changed to {steps}%")
+
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_steps = int(self.txt_aud_gen_steps.text())
+        if txt_steps != steps:
+            self.txt_aud_gen_steps.setText(f"{steps}")
+
+    def txt_aud_gen_steps_editingFinished(self):
+        steps = int(self.txt_aud_gen_steps.text())
+        steps = max(steps, C_STEPS_MIN)
+        steps = min(steps, C_STEPS_MAX)
+        #logging.info(f"AudioGen steps text changed to {steps}%")
+
+        self.txt_aud_gen_steps.setText(f"{steps}")
+        self.sld_aud_gen_steps.setValue(steps)
+
+    def txt_aud_gen_steps_textChanged(self, newSteps):
+        self.buf_man.msgSend("Ana", "change_sweep_points", newSteps)
 
     def knb_ana_gain_valueChanged(self, val):
         # logging.info(f"AudioAnalyzer gain knob changed to {val}%")
