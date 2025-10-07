@@ -7,6 +7,8 @@ import time
 import logging
 import re
 
+from datetime import datetime
+
 import BufferManager as BufMan
 
 import numpy as np
@@ -81,6 +83,12 @@ class AudioAnalyzer(QObject):
         self.freqFromMic = 0
         self.pastPeaks = [np.nan] * 2
         self.rejects = 0
+
+        self.analysis_num = 0    # Just a running counter of times analyze() is called, for debug
+
+        # Set Up Debug File
+        self.dbg_ana_file = None
+        #self.dbg_ana_file = 'dbg_ana' + datetime.now().strftime("_%y%m%d_%H%M%S") + '.csv'  # Set to None to disable
 
     def msgHandler(self, buf_id):
         # Retrieve Message
@@ -283,12 +291,15 @@ class AudioAnalyzer(QObject):
 
     def analyze(self, voltageAndTime):
         # keep track of current sweep frequency
-        print("getting new frequency from mic")
+        ###print("getting new frequency from mic")
         currSweepFreq = self.freqFromMic
         #currBuffSize = self.framesPerBuff
 
         # Retrieve buffer with mic waveform
         [time_list, volt_list] = voltageAndTime
+
+        self.analysis_num += 1
+        write_dbg = False
 
         num_samp = len(volt_list)               # Number of audio samples
         t_samp = time_list[1] - time_list[0]    # Audio sampling period
@@ -315,7 +326,7 @@ class AudioAnalyzer(QObject):
         self.hist_add(freq_list, ampl_list)
 
 
-        print("sending to guido")
+        ###print("sending to guido")
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
@@ -324,6 +335,9 @@ class AudioAnalyzer(QObject):
         if (self.sweep_running == True):
             distBtwnFreq = freq_list[1] - freq_list[0]
             i = int(currSweepFreq/distBtwnFreq) - 1
+
+            ###if currSweepFreq == 3000:    # <<<<<<<< TEMPORARY for debug
+            ###    write_dbg = True
 
             largAmplInd = 0
             # loop through 7 elements
@@ -409,6 +423,23 @@ class AudioAnalyzer(QObject):
             self.cal_ampl_list = apply_cal[1]
             self.buf_man.msgSend("Guido", "plot_data", ["Cal", apply_cal[0], apply_cal[1]])
             self.apply_cal = True
+
+        # Log Debug Info
+        if write_dbg:
+            if not self.dbg_ana_file is None:
+                with open(self.dbg_ana_file, mode='a') as csv_file:
+                    csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    ana_pass = f'PASS_{self.analysis_num}'
+                    csv_writer.writerow([ana_pass, 'Capture Time', datetime.now().timestamp()])
+                    csv_writer.writerow([ana_pass])
+                    csv_writer.writerow([ana_pass, 'MicData', 'Time', 'Voltage'])
+                    for ind in range(num_samp):
+                        csv_writer.writerow([ana_pass, 'MicData', time_list[ind], volt_list[ind]])
+                    csv_writer.writerow([ana_pass])
+                    csv_writer.writerow([ana_pass, 'FFT', 'Freq', 'Ampl'])
+                    for ind in range(len(freq_list)):
+                        csv_writer.writerow([ana_pass, 'FFT', freq_list[ind], ampl_list[ind]])
+                    csv_writer.writerow([ana_pass])
 
     def run(self):
         logging.info("AudioAnalyzer started")
