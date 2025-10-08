@@ -8,7 +8,11 @@ import re
 import pyaudio as pa
 import numpy as np
 
+from datetime import datetime
+
 import BufferManager as BufMan
+
+import csv
 
 # ==============================================================================
 # CONSTANTS AND GLOBALS
@@ -68,6 +72,15 @@ class AudioGen(QObject):
         self.currFreq = self.freq
         self.currVol = 0
         self._reopen_stream = False
+        self.run_time = None           # Running time
+
+        # Set Up Debug File
+        self.dbg_gen_file = None
+        #self.dbg_gen_file = 'dbg_gen' + datetime.now().strftime("_%y%m%d_%H%M%S") + '.csv'  # Set to None to disable
+        if not self.dbg_gen_file is None:
+            with open(self.dbg_gen_file, mode='a') as csv_file:
+                csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csv_writer.writerow(['Time', 'Amplitude', 'Buf_Index', 'Buf_Time'])
 
         # instantiate PyAudio
         p = pa.PyAudio()
@@ -196,9 +209,15 @@ class AudioGen(QObject):
                 self.t_start = 0
                 self.t_end = self.numSamples/self.rate
                 time.sleep(1)
+                self.run_time = None
 
             # Otherwise, Generate Output
             else:
+                # Start Run Time
+                buf_time = datetime.now().timestamp()
+                if self.run_time is None:
+                    self.run_time = buf_time
+
                 # Start with Tone of Unit Amplitude
                 if (self.mode == "Single Tone") or (self.mode == "Sweep"):
                     # keep track of current frequency
@@ -226,6 +245,13 @@ class AudioGen(QObject):
 
                 # Write to Output
                 stream.write(out_array, num_frames=self.numSamples)
+                if not self.dbg_gen_file is None:
+                    with open(self.dbg_gen_file, mode='a') as csv_file:
+                        csv_writer = csv.writer(csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                        for buf_nind, buf_ampl in np.ndenumerate(out_array):
+                            buf_ind = buf_nind[0]   # ndenumerate() gives us an n-dimensional index.  We want 1st dimension
+                            csv_writer.writerow([self.run_time + (buf_ind / self.rate), buf_ampl, buf_ind, buf_time])
+                self.run_time += self.numSamples / self.rate
 
         logging.info("AudioGen finished")
         # release resources
