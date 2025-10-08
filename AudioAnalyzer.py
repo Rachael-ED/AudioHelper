@@ -448,9 +448,9 @@ class AudioAnalyzer(QObject):
 
                     # --- Determine Next Sweep Tone ---
                     # When we're done, we'll generate 0, which stops Gen
-                    self.sweep_freq = self.sweep_freq * sweep_freq_mult
+                    self.sweep_freq = np.round(self.sweep_freq * sweep_freq_mult, 1)
                     print(f"sweep freq: {self.sweep_freq}")
-                    if np.floor(self.sweep_freq) > (self.stop_freq * sweep_freq_mult):
+                    if (self.sweep_freq) > np.round(self.stop_freq * sweep_freq_mult, 1):
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
                         self.sweep(False)
