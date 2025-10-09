@@ -350,58 +350,40 @@ class AudioAnalyzer(QObject):
         spec_buf = ["Live", freq_list, ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
 
+        #AInd = int(440/(freq_list[1]-freq_list[0])) - 1
+
+        #power = ampl_list[AInd-1] + ampl_list[AInd] + ampl_list[AInd+1]
+        #powerTot = np.sum(ampl_list ** 2)
+
+        #print(f"Power BOI: {power} --- Power Total: {[powerTot]} --- {power/powerTot}")
+
 
         if (self.sweep_running == True):
+
+            # compute total power
+            powerTotal = np.sum(ampl_list ** 2)
+
+            # figure out in which bucket the frequency should be
             distBtwnFreq = freq_list[1] - freq_list[0]
             i = int(currSweepFreq/distBtwnFreq) - 1
 
-            ###if currSweepFreq == 3000:    # <<<<<<<< TEMPORARY for debug
-            ###    write_dbg = True
+            # compute power in BOI (i.e. buckets of interest)
+            powerInBOI = ((ampl_list[i-1]) ** 2) + ((ampl_list[i]) ** 2) + ((ampl_list[i+1]) ** 2)
 
-            largAmplInd = 0
-            # loop through 7 elements
-            for x in range(-3, 4):
-                j = i + x
-                if ampl_list[j] > ampl_list[largAmplInd]:
-                    largAmplInd = j
+            print(f"Power BOI: {powerInBOI} --- Power Total: {[powerTotal]} --- {powerInBOI/powerTotal}")
 
-            #print(f"LargAmplInd: {largAmplInd}")
+            if powerInBOI/powerTotal > 0.90 and self.found == False:
+                print("TRUE!!")
 
-            if largAmplInd != i and largAmplInd != (i + 1) and largAmplInd != (i - 1):
-                self.found = False
-                self.rejects = self.rejects + 1
-                #print(f"Reject Count: {self.rejects}")
-                self.pastPeaks = [np.nan] * 2
-                self.numSweepFreqs = 0
-            else:
-                #print(f"NumSweepFreqs: {self.numSweepFreqs}")
-                if self.numSweepFreqs <= 1:
-                    if ampl_list[largAmplInd] != 0:
-                        self.pastPeaks[self.numSweepFreqs] = ampl_list[largAmplInd]
-                        #print(f"Past Peaks: {self.pastPeaks}")
-                        self.numSweepFreqs = self.numSweepFreqs + 1
-                elif self.numSweepFreqs == 2:
-                    self.pastPeaks[0] = self.pastPeaks[1]
-                    self.numSweepFreqs = 1
-
-                if abs(20*np.log10(self.pastPeaks[0]) - 20*np.log10(self.pastPeaks[1])) < 0.5:
-                    for k in range(0, len(self.sweepFreqs)):
-                        if self.sweepFreqs[k] == currSweepFreq:
-                            self.sweepAmpls[k] = ampl_list[largAmplInd]
-                            self.found = True
-
-                            self.rejects = 0
-                            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
-                            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
-                            break
-                        elif np.isnan(self.sweepFreqs[k]):
-                            self.sweepFreqs[k] = currSweepFreq
-                            self.sweepAmpls[k] = ampl_list[largAmplInd]
-                            self.found = True
-                            self.rejects = 0
-                            spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
-                            self.buf_man.msgSend("Guido", "plot_data", spec_buf)
-                            break
+                for k in range(0, len(self.sweepFreqs)):
+                    if np.isnan(self.sweepFreqs[k]):
+                        print("NaN Found")
+                        self.sweepFreqs[k] = currSweepFreq
+                        self.sweepAmpls[k] = np.sqrt(powerInBOI)
+                        self.found = True
+                        spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+                        self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+                        break
 
 
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
@@ -466,6 +448,7 @@ class AudioAnalyzer(QObject):
         self.sweep_freq = 0
         sweep_freq_mult = 0
         next_it_time = time.monotonic()
+        sweep_freq_cnt = 0
         while not self._stop_requested:
             # --- Wait for Next Iteration ---
             sleep_dur = next_it_time - time.monotonic()
@@ -486,27 +469,29 @@ class AudioAnalyzer(QObject):
                         self.sweep_running = True
                         if self.start_freq > self.stop_freq:
                             (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
-                        self.sweep_freq = self.start_freq
-                        sweep_freq_mult = 1
-                        if self.sweep_points > 1:
-                            sweep_freq_mult = (self.stop_freq / self.start_freq) ** (1/(self.sweep_points-1))
+                        sweep_freq_cnt = 0
+                    else:
+                        sweep_freq_cnt = sweep_freq_cnt + 1
+
+                    self.sweep_freq = self.start_freq * (self.stop_freq / self.start_freq) ** (sweep_freq_cnt / (self.sweep_points - 1))
 
                     # --- Generate Sweep Tone ---
                     logging.info(f"{self.name}: AudioAnalyzer sweep generating {self.sweep_freq}Hz.")
 
-                    self.found = False
-                    # --- SEND MESSAGE TO GEN TO PLAY TONE
-                    self.buf_man.msgSend("Gen", "play_tone", self.sweep_freq)
+
 
                     # --- Determine Next Sweep Tone ---
                     # When we're done, we'll generate 0, which stops Gen
-                    self.sweep_freq = np.round(self.sweep_freq * sweep_freq_mult, 1)
-                    print(f"next sweep freq: {self.sweep_freq}")
-                    if (self.sweep_freq) > np.round(self.stop_freq * sweep_freq_mult, 1):
+
+                    if sweep_freq_cnt >= self.sweep_points:
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
                         self.sweep(False)
                         self.buf_man.msgSend("Guido", "sweep_finished", None)
+                    else:
+                        # --- SEND MESSAGE TO GEN TO PLAY TONE
+                        self.buf_man.msgSend("Gen", "play_tone", self.sweep_freq)
+                        self.found = False
 
             # --- Stop the Sweep ---
             elif self.sweep_running:
