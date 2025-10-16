@@ -220,7 +220,7 @@ class AudioAnalyzer(QObject):
         age_out_time = cur_time - self.hist_dur
         ind = 0   # Index of oldest entry that has not aged out
         while ind < len(self.hist_list):
-            [timestamp, freq_list, ampl_list] = self.hist_list[ind]
+            [timestamp, freq_list, ampl_list, swp_data_list] = self.hist_list[ind]
             if timestamp >= age_out_time:
                 break
             ind += 1
@@ -229,9 +229,9 @@ class AudioAnalyzer(QObject):
         elif ind > 0:                    # Some entries have aged out
             del self.hist_list[:ind]
 
-    def hist_add(self, freq_list, ampl_list):
+    def hist_add(self, freq_list, ampl_list, swp_data_list):
         self.hist_clean()
-        self.hist_list.append([time.monotonic(), freq_list, ampl_list])
+        self.hist_list.append([time.monotonic(), freq_list, ampl_list, swp_data_list])
 
     # Translates an amplitude spectrum with one set of frequencies to a different set of frequencies.
     # We'll do this by interpolating in a log-log sense, so that a new point at a new frequency
@@ -341,10 +341,6 @@ class AudioAnalyzer(QObject):
                 cal_ampl_list = self.refreq_ampl(self.cal_freq_list, self.cal_ampl_list, freq_list)
             ampl_list = np.divide(ampl_list, cal_ampl_list)
 
-        # Add to History
-        self.hist_add(freq_list, ampl_list)
-
-
         ###print("sending to guido")
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
@@ -357,7 +353,8 @@ class AudioAnalyzer(QObject):
 
         #print(f"Power BOI: {power} --- Power Total: {[powerTot]} --- {power/powerTot}")
 
-
+        powerInBOI = None
+        freq_found = False
         if (self.sweep_running == True):
 
             # compute total power
@@ -368,23 +365,30 @@ class AudioAnalyzer(QObject):
             i = int(currSweepFreq/distBtwnFreq) - 1
 
             # compute power in BOI (i.e. buckets of interest)
-            powerInBOI = ((ampl_list[i-1]) ** 2) + ((ampl_list[i]) ** 2) + ((ampl_list[i+1]) ** 2)
+            ###powerInBOI = ((ampl_list[i-1]) ** 2) + ((ampl_list[i]) ** 2) + ((ampl_list[i+1]) ** 2)
+            powerInBOI = 0
+            window_width = 1
+            for ind in range(i-window_width, i+window_width+1):
+                powerInBOI += ampl_list[ind] ** 2
 
-            print(f"Power BOI: {powerInBOI} --- Power Total: {[powerTotal]} --- {powerInBOI/powerTotal}")
+            print(f"Power BOI: {powerInBOI} = {20*np.log(powerInBOI)} dB --- Power Total: {[powerTotal]} --- {powerInBOI/powerTotal}")
+
+            conv_ampl_list = np.convolve(ampl_list, ampl_list)
+            max_ind = np.argmax(conv_ampl_list)
+            det_freq = ((max_ind/2) + 1) * distBtwnFreq
+            print(f"Sweep Freq = {currSweepFreq} Hz.  Detected Freq = {det_freq} Hz.  Freq Resolution = {distBtwnFreq} Hz.")
+
 
             if powerInBOI/powerTotal > 0.90 and self.found == False:
-                print("TRUE!!")
+                print(f">> Found pure tone")
+                freq_found = True
+            if abs(det_freq - currSweepFreq) < (distBtwnFreq/4):
+                print(f">> Found frequency")
+                freq_found = True
+        swp_data_list = [currSweepFreq, freq_found, powerInBOI]
 
-                for k in range(0, len(self.sweepFreqs)):
-                    if np.isnan(self.sweepFreqs[k]):
-                        print("NaN Found")
-                        self.sweepFreqs[k] = currSweepFreq
-                        self.sweepAmpls[k] = np.sqrt(powerInBOI)
-                        self.found = True
-                        spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
-                        self.buf_man.msgSend("Guido", "plot_data", spec_buf)
-                        break
-
+        # Add to History
+        self.hist_add(freq_list, ampl_list, swp_data_list)
 
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
@@ -400,7 +404,7 @@ class AudioAnalyzer(QObject):
         #           in the history buffer.  Plotting the "average dB" gives better behaviour.
         avg_freq_list = freq_list
         avg_ampl_list = np.array([0] * len(avg_freq_list)).astype(np.float64)
-        for [hist_timestamp, hist_freq_list, hist_ampl_list] in self.hist_list:
+        for [hist_timestamp, hist_freq_list, hist_ampl_list, swp_data_list] in self.hist_list:
             adj_hist_ampl_list = hist_ampl_list
             if not np.array_equal(hist_freq_list, freq_list):
                 adj_hist_ampl_list = self.refreq_ampl(hist_freq_list, hist_ampl_list, freq_list)
@@ -412,6 +416,55 @@ class AudioAnalyzer(QObject):
         # Send Average Amplitude to Guido
         spec_buf = ["Avg", avg_freq_list, avg_ampl_list]
         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+
+        # Detect Successful Sweep Point
+        if (self.sweep_running == True):
+
+            # Consider the Current Sweep Point Good if History Buffer
+            #     is filled with valid frequency and amplitude within 3dB
+            sweep_ready = False
+            avg_powerInBOI = 0
+            if freq_found:
+                sweep_ready = True
+                max_powerInBOI = None
+                min_powerInBOI = None
+                for [hist_timestamp, hist_freq_list, hist_ampl_list, swp_data_list] in self.hist_list:
+                    [hist_currSweepFreq, hist_freq_found, hist_powerInBOI] = swp_data_list
+                    if not hist_freq_found:
+                        sweep_ready = False
+                        break
+                    avg_powerInBOI += hist_powerInBOI
+                    if max_powerInBOI == None or max_powerInBOI < hist_powerInBOI:
+                        max_powerInBOI = hist_powerInBOI
+                    if min_powerInBOI == None or min_powerInBOI > hist_powerInBOI:
+                        min_powerInBOI = hist_powerInBOI
+
+                if max_powerInBOI == None:
+                    max_powerInBOI = min_powerInBOI
+                if min_powerInBOI == None:
+                    min_powerInBOI = max_powerInBOI
+
+                if min_powerInBOI == None:   # Both are None
+                    sweep_ready = False
+                elif 10*np.log(max_powerInBOI/min_powerInBOI) > 3 :
+                    print(f">> Power Not Stable over {len(self.hist_list)} buffers")
+                    print(f">>>>   min = {min_powerInBOI} = {10*np.log(min_powerInBOI)} dB, max = {max_powerInBOI} = {10*np.log(max_powerInBOI)} dB")
+                    sweep_ready = False
+
+            if sweep_ready:
+                print("TRUE!!")
+                if len(self.hist_list) > 0:
+                    avg_powerInBOI = avg_powerInBOI / len(self.hist_list)
+
+                for k in range(0, len(self.sweepFreqs)):
+                    if np.isnan(self.sweepFreqs[k]):
+                        print("NaN Found")
+                        self.sweepFreqs[k] = currSweepFreq
+                        self.sweepAmpls[k] = np.sqrt(avg_powerInBOI)
+                        self.found = True
+                        spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+                        self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+                        break
 
 
         # Capture Calibration Data to Apply Next Time
