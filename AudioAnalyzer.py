@@ -370,13 +370,16 @@ class AudioAnalyzer(QObject):
             # compute power in BOI (i.e. buckets of interest)
             powerInBOI = ((ampl_list[i-1]) ** 2) + ((ampl_list[i]) ** 2) + ((ampl_list[i+1]) ** 2)
 
-            print(f"Power BOI: {powerInBOI} --- Power Total: {[powerTotal]} --- {powerInBOI/powerTotal}")
+            print(f"Power BOI: {powerInBOI} --- Power Cal: {[powerInBOI]} --- {powerInBOI/powerTotal}")
 
-            if powerInBOI/powerTotal > 0.90 and self.found == False:
+            if powerInBOI/powerInBOI > 0.90 and self.found == False:
                 print("TRUE!!")
 
                 for k in range(0, len(self.sweepFreqs)):
-                    if np.isnan(self.sweepFreqs[k]):
+
+                    if self.sweepFreqs[k] == currSweepFreq:
+                        break
+                    elif np.isnan(self.sweepFreqs[k]):
                         print("NaN Found")
                         self.sweepFreqs[k] = currSweepFreq
                         self.sweepAmpls[k] = np.sqrt(powerInBOI)
