@@ -21,7 +21,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from ui_AudioHelperGUI_v1 import Ui_ui_AudioHelperGUI
+from ui_AudioHelperGUI_v1a import Ui_ui_AudioHelperGUI
 
 import BufferManager as BufMan
 import pyaudio as pa
@@ -310,6 +310,9 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
         self.knb_ana_gain.valueChanged.connect(self.knb_ana_gain_valueChanged)
         self.txt_ana_gain.editingFinished.connect(self.txt_ana_gain_editingFinished)
         #self.txt_ana_gain.textChanged.connect(self.txt_ana_gain_textChanged)
+
+        self.knb_ana_threshold.valueChanged.connect(self.knb_ana_threshold_valueChanged)
+        self.txt_ana_threshold.editingFinished.connect(self.txt_ana_threshold_editingFinished)
 
         # Connect AudioAnalyzer Signals
         self.btn_aud_ana_enable.clicked.connect(self.btn_aud_ana_enable_click)
@@ -956,6 +959,28 @@ class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
 
     #def txt_ana_avg_textChanged(self, new_avg_dur):
     #    self.buf_man.msgSend("Ana", "change_avg_dur", new_avg_dur)
+
+    def knb_ana_threshold_valueChanged(self, val):
+        # Change text entry only if the current value would not map to this position (avoid inf recursion)
+        txt_val = float(self.txt_ana_threshold.text())
+        if txt_val != float(val/100):
+            self.txt_ana_threshold.setText(f"{val/100}")
+
+        #print(f"SENDING THRESHOLD {val/100}")
+        self.buf_man.msgSend("Ana", "change_threshold", val/100)
+
+    def txt_ana_threshold_editingFinished(self):
+        val = float(self.txt_ana_threshold.text())
+
+        if val > 1.00:
+            val = 1.00
+        elif val < 0.00:
+            val = 0.00
+
+        # logging.info(f"AudioAnalyzer averaging duration knob text changed to {val}%")
+
+        self.txt_ana_threshold.setText(f"{val}")
+        self.knb_ana_threshold.setValue(val * 100)
 
     # ----------------------------------------------------------------------
     # AudioAnalyzer Interface
