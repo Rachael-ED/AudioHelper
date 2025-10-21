@@ -21,7 +21,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from ui_AudioHelperGUI import Ui_ui_AudioHelperGUI
+from ui_AudioHelperGUI_v1 import Ui_ui_AudioHelperGUI
 
 import BufferManager as BufMan
 import pyaudio as pa
