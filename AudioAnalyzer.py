@@ -1,3 +1,4 @@
+
 # ==============================================================================
 # IMPORTS
 #
@@ -88,6 +89,7 @@ class AudioAnalyzer(QObject):
         self.rejects = 0
 
         self.analysis_num = 0    # Just a running counter of times analyze() is called, for debug
+        self.threshold = 0.90
 
         # Set Up Debug File
         self.dbg_ana_file = None
@@ -138,7 +140,9 @@ class AudioAnalyzer(QObject):
         elif msg_type == "mic_data_sweep":
             self.freqFromMic = msg_data[1]
             self.analyze(msg_data[0])
-
+        elif msg_type == "change_threshold":
+            #print("THRESHOLD!!!")
+            self.threshold = msg_data
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -379,15 +383,10 @@ class AudioAnalyzer(QObject):
             print(f"Sweep Freq = {currSweepFreq} Hz.  Detected Freq = {det_freq} Hz.  Freq Resolution = {distBtwnFreq} Hz.")
 
 
-            if powerInBOI/powerTotal > 0.90 and self.found == False:
+            if powerInBOI/powerTotal > self.threshold and self.found == False:
                 print(f">> Found pure tone")
                 freq_found = True
-            if abs(det_freq - currSweepFreq) < (distBtwnFreq/4):
-                print(f">> Found frequency")
-                freq_found = True
-        swp_data_list = [currSweepFreq, freq_found, powerInBOI]
-            if powerInBOI/powerInBOI > 0.90 and self.found == False:
-                print("TRUE!!")
+
                 for k in range(0, len(self.sweepFreqs)):
 
                     if self.sweepFreqs[k] == currSweepFreq:
@@ -401,9 +400,13 @@ class AudioAnalyzer(QObject):
                         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
                         break
 
+            if abs(det_freq - currSweepFreq) < (distBtwnFreq/4):
+                print(f">> Found frequency")
+                freq_found = True
+        swp_data_list = [currSweepFreq, freq_found, powerInBOI]
+
         # Add to History
         self.hist_add(freq_list, ampl_list, swp_data_list)
-
 
         #logging.info(f"{self.name}: Analyzed spectrum.  num_samp={num_samp}, t_samp={t_samp}, df={meas_f[1] - meas_f[0]}")
 
