@@ -2,7 +2,7 @@
 # ==============================================================================
 # IMPORTS
 #
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 import threading
 import time
 import logging
@@ -33,6 +33,8 @@ C_HIST_DUR_MAX = 10    # Same as C_AVG_DUR_MAX in Guido
 C_HIST_DUR_MIN = 0     # Same as C_AVG_DUR_MIN in Guido
 
 C_SWEEP_DWELL_DUR = 0.1    # Time for each sweep tone [s]
+
+C_SWEEP_BASELINE_VOL = 10 ** (-12/20)   # -12dB
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -380,11 +382,11 @@ class AudioAnalyzer(QObject):
             conv_ampl_list = np.convolve(ampl_list, ampl_list)
             max_ind = np.argmax(conv_ampl_list)
             det_freq = ((max_ind/2) + 1) * distBtwnFreq
-            print(f"Sweep Freq = {currSweepFreq} Hz.  Detected Freq = {det_freq} Hz.  Freq Resolution = {distBtwnFreq} Hz.")
+            #print(f"Sweep Freq = {currSweepFreq} Hz.  Detected Freq = {det_freq} Hz.  Freq Resolution = {distBtwnFreq} Hz.")
 
 
             if powerInBOI/powerTotal > self.threshold and self.found == False:
-                print(f">> Found pure tone")
+                #print(f">> Found pure tone")
                 freq_found = True
 
                 for k in range(0, len(self.sweepFreqs)):
@@ -392,16 +394,18 @@ class AudioAnalyzer(QObject):
                     if self.sweepFreqs[k] == currSweepFreq:
                         break
                     elif np.isnan(self.sweepFreqs[k]):
-                        print("NaN Found")
+                        #print("NaN Found")
                         self.sweepFreqs[k] = currSweepFreq
-                        self.sweepAmpls[k] = np.sqrt(powerInBOI)
+                        volume = self.buf_man.msgSend("Gen", "REQ_volume")
+                        print(f"{volume}")
+                        self.sweepAmpls[k] = np.sqrt(powerInBOI)/volume * C_SWEEP_BASELINE_VOL
                         self.found = True
                         spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
                         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
                         break
 
             if abs(det_freq - currSweepFreq) < (distBtwnFreq/4):
-                print(f">> Found frequency")
+                #print(f">> Found frequency")
                 freq_found = True
         swp_data_list = [currSweepFreq, freq_found, powerInBOI]
 

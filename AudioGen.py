@@ -1,7 +1,7 @@
 # ==============================================================================
 # IMPORTS
 #
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 import time
 import logging
 import re
@@ -159,6 +159,9 @@ class AudioGen(QObject):
                 ack_data = True
             else:
                 ack_data = False
+        elif msg_type == "REQ_volume":
+            print("vol requested")
+            ack_data = self.vol
 
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")

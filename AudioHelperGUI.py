@@ -11,13 +11,14 @@ from datetime import datetime
 
 import numpy as np
 
-from PyQt5.Qt import *
-from PyQt5.QtGui import QDoubleValidator
-from PyQt5.QtCore import QObject, pyqtSignal
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QInputDialog
+from PyQt6 import *
+from PyQt6.QtGui import QDoubleValidator, QIntValidator
+from PyQt6.QtCore import QObject, pyqtSignal
+#from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog, QMessageBox, QInputDialog, QDialog, QMainWindow, QApplication
+from PyQt6.QtWidgets import *
 
 import matplotlib
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
@@ -30,7 +31,7 @@ from pprint import pformat
 import json
 import csv
 
-matplotlib.use('Qt5Agg')
+matplotlib.use('QtAgg')
 
 # ==============================================================================
 # CONSTANTS AND GLOBALS
@@ -114,7 +115,7 @@ class SetupWindow(QDialog):
         outputLabel = QLabel("Select Output:")
 
         # Add cancel and Save buttons
-        options = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        options = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
 
         # Show all the buttons
         layout = QGridLayout()

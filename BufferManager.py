@@ -48,7 +48,7 @@
 # ==============================================================================
 # IMPORTS
 #
-from PyQt5.QtCore import QMutex, QSemaphore
+from PyQt6.QtCore import QMutex, QSemaphore
 import logging
 
 # ==============================================================================
