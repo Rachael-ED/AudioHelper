@@ -2,13 +2,14 @@
 # IMPORTS
 #
 import sys
-from PyQt5.Qt import *
+from PyQt6.QtCore import *
 import AudioHelperGUI as GuiMdl
 import AudioGen as AudGenMdl
 import AudioAnalyzer as AudAnaMdl
 import MicReader as MicMdl
 import logging
 import pyaudio as pa
+from PyQt6.QtWidgets import QApplication
 
 # ==============================================================================
 # CONSTANTS AND GLOBALS
