@@ -22,7 +22,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from ui_AudioHelperGUI_v1a import Ui_ui_AudioHelperGUI
+from ui_AudioHelperGUI_v4c import Ui_MainWindow
 
 import BufferManager as BufMan
 import pyaudio as pa
@@ -151,7 +151,7 @@ class SetupWindow(QDialog):
 # ==============================================================================
 # CLASS: MAIN WINDOW
 #
-class AudioHelperGUI(QMainWindow, Ui_ui_AudioHelperGUI):
+class AudioHelperGUI(QMainWindow, Ui_MainWindow):
     """Class: AudioHelperGUI
     Main GUI window for the application.
 
