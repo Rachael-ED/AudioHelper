@@ -77,12 +77,16 @@ class AudioAnalyzer(QObject):
         self.sweep_freq = 0
         self.sweep_points = 100
         self.gain_db = 60
-        self.hist_dur = 3  # Length [seconds] of history buffer
-        self.hist_list = []  # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
+        self.settle_dur = 1.000                 # Min time [seconds] to allow system to settle
+        self.noise_floor_ampl_db = -15          # Noise floor for delay peak detection
+        self.hist_dur = 3                       # Length [seconds] of history buffer
+        self.hist_list = []                     # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
         self.apply_cal = False  # False = Don't use.  True = Use.  None = Remove.  String = Capture plot line
         self.cal_freq_list = []
         self.cal_ampl_list = []
+
+        self.maxAmpl_TS = 0
 
         self.sweepFreqs = [np.nan] * self.sweep_points
         self.sweepAmpls = [np.nan] * self.sweep_points
@@ -106,7 +110,8 @@ class AudioAnalyzer(QObject):
 
         # Process Message
         if msg_type == "mic_data":
-            self.analyze(msg_data, -1)
+            [voltageAndTime, inputBuf_TS] = msg_data
+            self.analyze(voltageAndTime, inputBuf_TS, -1, 0)
 
         elif msg_type == "sweep":
             self.sweep(msg_data)
@@ -140,11 +145,15 @@ class AudioAnalyzer(QObject):
             self.sweepAmpls = [np.nan] * self.sweep_points
 
         elif msg_type == "mic_data_sweep":
-            voltageAndTime = msg_data[0]
-            currSweepFreq = msg_data[1]
-            self.analyze(voltageAndTime, currSweepFreq)
+            [voltageAndTime, inputBuf_TS, currSweepFreq, currSweepFreq_TS] = msg_data
+            self.analyze(voltageAndTime, inputBuf_TS, currSweepFreq, currSweepFreq_TS)
+
         elif msg_type == "change_threshold":
             self.threshold = msg_data
+
+        elif msg_type == "REQ_max_ampl_ts":
+            ack_data = self.maxAmpl_TS
+
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
@@ -246,6 +255,7 @@ class AudioAnalyzer(QObject):
     #     so we'll just extend the closest frequency of the reference.
     def refreq_ampl(self, ref_freq_list, ref_ampl_list, new_freq_list):
         # Translate incoming lists to log
+        #     Using np.log (not np.log10) since we'll use np.exp to un-log below
         ref_log_freq_list = np.log(np.clip(ref_freq_list, 1e-12, None))
         ref_log_ampl_list = np.log(np.clip(ref_ampl_list, 1e-12, None))
         new_log_freq_list = np.log(np.clip(new_freq_list, 1e-12, None))
@@ -313,7 +323,7 @@ class AudioAnalyzer(QObject):
 
         return new_ampl_list
 
-    def analyze(self, voltageAndTime, currSweepFreq):
+    def analyze(self, voltageAndTime, inputBuf_TS, currSweepFreq, currSweepFreq_TS):
         # --------------------------------------------------------------------------------
         # FETCH STATE & DATA BUFFER TO ANALYZE
         #
@@ -328,6 +338,11 @@ class AudioAnalyzer(QObject):
         num_samp = len(volt_list)             # Number of audio samples
         t_samp = time_list[1] - time_list[0]  # Audio sampling period
         bufDuration = num_samp * t_samp       # Time covered by buffer
+
+        settle_dur = self.settle_dur
+        toneDuration = 0
+        if currSweepFreq > 0:
+            toneDuration = inputBuf_TS - currSweepFreq_TS   # Delay from sweep tone start to Mic buffer captured
 
         # --------------------------------------------------------------------------------
         # CALCULATE AMPLITUDE SPECTRUM OF BUFFER
@@ -355,6 +370,13 @@ class AudioAnalyzer(QObject):
 
         # Compute total power
         powerTotal = np.sum(ampl_list ** 2)
+        powerTotal_db = 10*np.log10(powerTotal)
+        #logging.info(f"powerTotal = {powerTotal:.3f} = {powerTotal_db:.3f}dB")
+        if powerTotal_db > self.noise_floor_ampl_db:
+            max_ampl_ind = np.argmax(volt_list)
+            max_ampl_TS = inputBuf_TS + (max_ampl_ind*t_samp)
+            logging.info(f"Found loud spike at T = {max_ampl_TS}")
+            self.maxAmpl_TS = max_ampl_TS
 
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
@@ -380,7 +402,7 @@ class AudioAnalyzer(QObject):
             for ind in range(currSweepFreqInd - window_width, currSweepFreqInd + window_width + 1):
                 powerInBOI += ampl_list[ind] ** 2
 
-            #logging.info(f"Power in BOI: {powerInBOI:.3f} = {10 * np.log(powerInBOI):.3f} dB --- Power Total: {powerTotal:.3f} --- {powerInBOI / powerTotal:.3f}")
+            #logging.info(f"Power in BOI: {powerInBOI:.3f} = {10 * np.log10(powerInBOI):.3f} dB --- Power Total: {powerTotal:.3f} --- {powerInBOI / powerTotal:.3f}")
 
         # See if Expected Sweep Frequency is Dominant in Buffer
         #     Only if we're analyzing a buffer captured during a sweep (which includes currSweepFreq)
@@ -393,7 +415,7 @@ class AudioAnalyzer(QObject):
             if abs(det_freq - currSweepFreq) < (distBtwnFreq / 4):
                 foundSweepFreq = currSweepFreq
                 #logging.info(f"Detected freq : {det_freq:.3f} Hz")
-        buf_data_list = [bufDuration, foundSweepFreq, powerTotal, powerInBOI]
+        buf_data_list = [bufDuration, toneDuration, foundSweepFreq, powerTotal, powerInBOI]
 
         # --------------------------------------------------------------------------------
         # CURRENT BUFFER TO HISTORY LIST
@@ -427,9 +449,19 @@ class AudioAnalyzer(QObject):
 
         hist_ind = -1
         cntFreqFound = 0
+        hist_buf_str = "HISTORY BUFFER\n"
+        hist_buf_str += "   INDEX      BUF_DUR     TONE_DUR   FOUND_FREQ    PWR_TOTAL   PWR_IN_BOI\n"
         for [hist_timestamp, hist_freq_list, hist_ampl_list, buf_data_list] in self.hist_list:
-            [hist_bufDuration, hist_foundSweepFreq, hist_powerTotal, hist_powerInBOI] = buf_data_list
+            [hist_bufDuration, hist_toneDuration, hist_foundSweepFreq, hist_powerTotal, hist_powerInBOI] = buf_data_list
             hist_ind += 1
+
+            # DEBUG
+            if True:
+                hist_buf_str += f"   {hist_ind:>5}   {hist_bufDuration:9.3f}s   {hist_toneDuration:9.3f}s   "
+                hist_buf_str += f"      None   " if hist_foundSweepFreq is None else f"{hist_foundSweepFreq:8.3f}Hz   "
+                hist_buf_str += f"      None   " if hist_powerTotal is None else f"{10*np.log10(hist_powerTotal):8.3f}dB   "
+                hist_buf_str += f"      None   " if hist_powerInBOI is None else f"{10*np.log10(hist_powerInBOI):8.3f}dB   "
+                hist_buf_str += "\n"
 
             # Remap Amplitudes to Common Frequency List for Averaging
             adj_hist_ampl_list = hist_ampl_list
@@ -440,13 +472,14 @@ class AudioAnalyzer(QObject):
             allTS_list[hist_ind] = hist_timestamp
             allBufDuration_list[hist_ind] = hist_bufDuration
             allPowerTotal_list[hist_ind]= hist_powerTotal
-            if hist_foundSweepFreq == currSweepFreq:
+            if (hist_foundSweepFreq == currSweepFreq) and (hist_toneDuration >= settle_dur):
                 freqFoundTS_list[cntFreqFound] = hist_timestamp
                 freqFoundBufDuration_list[cntFreqFound] = hist_bufDuration
                 freqFoundPowerInBOI_list[cntFreqFound] = hist_powerInBOI
                 cntFreqFound += 1
 
             # Accumulate Metrics
+            #     Using np.log (not np.log10) since we'll use np.exp to un-log below
             avg_ampl_list += np.log(np.clip(adj_hist_ampl_list, 1e-12, None))  # Sum up all logs, avoiding 0
 
         avg_powerTotal = 0
@@ -475,9 +508,9 @@ class AudioAnalyzer(QObject):
 
             avg_powerInBOI = np.average(freqFoundPowerInBOI_list[f:l])
 
-            avg_powerInBOI_db = 10 * np.log( np.average(freqFoundPowerInBOI_list[f:l]) )
-            min_powerInBOI_db = 10 * np.log( np.min(freqFoundPowerInBOI_list[f:l]) )
-            max_powerInBOI_db = 10 * np.log( np.max(freqFoundPowerInBOI_list[f:l]) )
+            avg_powerInBOI_db = 10 * np.log10( np.average(freqFoundPowerInBOI_list[f:l]) )
+            min_powerInBOI_db = 10 * np.log10( np.min(freqFoundPowerInBOI_list[f:l]) )
+            max_powerInBOI_db = 10 * np.log10( np.max(freqFoundPowerInBOI_list[f:l]) )
 
         if cntFreqFound > 3:
             avg_powerInBOI = np.average(freqFoundPowerInBOI_list[f:l])
@@ -485,9 +518,9 @@ class AudioAnalyzer(QObject):
             l=cntFreqFound
             f=l-3
 
-            avg_powerInBOI_db = 10 * np.log( np.average(freqFoundPowerInBOI_list[f:l]) )
-            min_powerInBOI_db = 10 * np.log( np.min(freqFoundPowerInBOI_list[f:l]) )
-            max_powerInBOI_db = 10 * np.log( np.max(freqFoundPowerInBOI_list[f:l]) )
+            avg_powerInBOI_db = 10 * np.log10( np.average(freqFoundPowerInBOI_list[f:l]) )
+            min_powerInBOI_db = 10 * np.log10( np.min(freqFoundPowerInBOI_list[f:l]) )
+            max_powerInBOI_db = 10 * np.log10( np.max(freqFoundPowerInBOI_list[f:l]) )
 
 
         # Send Average Amplitude to Guido
@@ -505,7 +538,7 @@ class AudioAnalyzer(QObject):
             #     is filled with valid frequency and amplitude within 3dB
             sweep_ready = False
             sweep_timeout = 0.8*totalBufElapsed
-            if foundSweepFreq == currSweepFreq:
+            if (foundSweepFreq == currSweepFreq) and (toneDuration >= settle_dur):
                 sweep_ready = True
                 if sweepBufElapsed >= sweep_timeout:
                     pass
@@ -531,14 +564,15 @@ class AudioAnalyzer(QObject):
             if dbg_out_en:
                 dbg_out_start_time = time.monotonic()
                 if sweep_ready:
-                    logging.info(f"History List: READY for {currSweepFreq:.3f} Hz")
+                    logging.info(f"History List: READY for {currSweepFreq:.3f} Hz, Avg Pwr in BOI = {np.sqrt(avg_powerInBOI):.3f} = {20 * np.log10(np.sqrt(avg_powerInBOI)):.3f}dB")
                 else:
                     logging.info(f"History List: NOT READY for {currSweepFreq:.3f} Hz")
+                logging.info(hist_buf_str)
                 logging.info(f"    Total Buffers:        {hist_len} = {totalBufDuration:.3f}s over {totalBufElapsed:.3f}s elapsed")
                 logging.info(f"    Timeout:              {sweep_timeout:.3f}s")
                 logging.info(f"    Sweep Freq Buffers:   {cntFreqFound} = {sweepBufDuration:.3f}s over {sweepBufElapsed:.3f}s elapsed")
                 if cntFreqFound > 0:
-                    logging.info(f"    Power in BOI:         {min_powerInBOI_db:.3f}dB min, {avg_powerInBOI_db:.3f}dB avg, {max_powerInBOI_db:.3f}dB max ")
+                    logging.info(f"    Power in BOI:         {min_powerInBOI_db:.3f}dB min, {avg_powerInBOI_db:.3f}dB avg, {max_powerInBOI_db:.3f}dB max, {(max_powerInBOI_db - min_powerInBOI_db):.3f}dB spread\n")
 
                 '''
                 logging.info(f"Benchmarking:")

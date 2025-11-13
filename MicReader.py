@@ -9,6 +9,7 @@ import numpy as np
 import pyaudio as pa
 import BufferManager as BufMan
 
+from datetime import datetime
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -53,6 +54,9 @@ class MicReader(QObject):
 
         self.tempFramesPerBuff = 16384
 
+        self.currSweepFreq = 0
+        self.currSweepFreq_TS = datetime.now().timestamp()
+
         # instantiate PyAudio
         p = pa.PyAudio()
         # find number of devices (input and output)
@@ -95,7 +99,13 @@ class MicReader(QObject):
             }
 
         elif msg_type == "curr_sweep_freq":
-            self.currSweepFreq = msg_data
+            [self.currSweepFreq, self.currSweepFreq_TS] = msg_data
+
+        elif msg_type == "REQ_curr_sweep_freq":
+            ack_data = {
+                "curr_sweep_freq": self.currSweepFreq,
+                "curr_sweep_freq_time": self.currSweepFreq_TS
+            }
 
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
@@ -138,6 +148,7 @@ class MicReader(QObject):
                 sweepMode = self.buf_man.msgSend("Gen", "REQ_sweep_mode", None)
 
                 data = 0
+                inputBuf_TS = datetime.now().timestamp()
                 if sweepMode == True and self.currSweepFreq > 0:
                     self.tempFramesPerBuff = int(100/self.currSweepFreq*self.rate)
 
@@ -147,9 +158,11 @@ class MicReader(QObject):
                     '''
 
                     data = stream.read(self.tempFramesPerBuff, exception_on_overflow=False)
+                    inputBuf_TS = datetime.now().timestamp()
                     t = np.linspace(start=0, stop=(self.tempFramesPerBuff - 1)/self.rate, num=self.tempFramesPerBuff).astype(np.float32)
                 else:
                     data = stream.read(self.framesPerBuffer, exception_on_overflow=False)
+                    inputBuf_TS = datetime.now().timestamp()
                     t = np.linspace(start=0, stop=(self.framesPerBuffer - 1) / self.rate, num=self.framesPerBuffer).astype(np.float32)
 
 
@@ -160,10 +173,10 @@ class MicReader(QObject):
                 # if so, send Ana the voltageAndTime info, as well as the current sweep frequency
                 # otherwise, just send the voltageAndTime info
                 if sweepMode == True:
-                    freqData = [voltageAndTime, self.currSweepFreq]
+                    freqData = [voltageAndTime, inputBuf_TS, self.currSweepFreq, self.currSweepFreq_TS]
                     self.buf_man.msgSend("Ana", "mic_data_sweep", freqData)
                 else:
-                    self.buf_man.msgSend("Ana", "mic_data", voltageAndTime)
+                    self.buf_man.msgSend("Ana", "mic_data", [voltageAndTime, inputBuf_TS])
             else:
                 time.sleep(1)
 

@@ -58,6 +58,7 @@ class AudioGen(QObject):
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
 
         self._audio_on = False
+        self._new_tone = False
         self._stop_requested = False
         self.mode = "Single Tone"
         self.format = format
@@ -73,6 +74,8 @@ class AudioGen(QObject):
         self.currVol = 0
         self._reopen_stream = False
         self.run_time = None           # Running time
+
+        self.delayMeasPeak_TS = 0   # Timestamp of last generated delay measurement peak
 
         # Set Up Debug File
         self.dbg_gen_file = None
@@ -160,8 +163,9 @@ class AudioGen(QObject):
             else:
                 ack_data = False
         elif msg_type == "REQ_volume":
-            print("vol requested")
             ack_data = self.vol
+        elif msg_type == "REQ_delay_meas_peak_ts":
+            ack_data = self.delayMeasPeak_TS
 
         else:
             logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
@@ -193,6 +197,7 @@ class AudioGen(QObject):
             #     If the volume changes, we'll bleed that out over the course of the buffer
             #     to avoid audible pops when changing the volume
             end_vol = self.vol
+            mode = self.mode
 
             # if the output device index is changed, the stream needs to be reopened
             if self._reopen_stream:
@@ -221,8 +226,22 @@ class AudioGen(QObject):
                 if self.run_time is None:
                     self.run_time = buf_time
 
+                # Generate Delay Measurement Pulse
+                if mode == "Delay Meas":           # Step 1: Ramp down to 0
+                    end_vol = 0
+                    self.mode = "Delay Meas 2"
+                    mode = "Delay Meas X"
+                elif mode == "Delay Meas 2":       # Step 2: Ramp up to volume
+                    self.mode = "Delay Meas 3"
+                    mode = "Delay Meas X"
+                elif mode == "Delay Meas 3":       # Step 3: Ramp back down to 0
+                    end_vol = 0
+                    self.mode = "Delay Meas DONE"
+                    mode = "Delay Meas X"
+                    self.enable(False)
+
                 # Start with Tone of Unit Amplitude
-                if (self.mode == "Single Tone") or (self.mode == "Sweep"):
+                if (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas X"):
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
@@ -234,7 +253,7 @@ class AudioGen(QObject):
                     # np.linspace(start, stop, num samples, don't include last sample)
                     pitch_array = np.sin(2 * np.pi * self.currFreq * time_array)
 
-                elif self.mode == "Noise":
+                elif mode == "Noise":
                     pitch_array = (self.currVol * np.random.rand(self.numSamples)).astype(np.float32)
 
                 else:
@@ -247,6 +266,7 @@ class AudioGen(QObject):
                 out_array = np.multiply(pitch_array, vol_array).astype(np.float32)
 
                 # Write to Output
+                out_time = datetime.now().timestamp()
                 stream.write(out_array, num_frames=self.numSamples)
                 if not self.dbg_gen_file is None:
                     with open(self.dbg_gen_file, mode='a') as csv_file:
@@ -255,6 +275,15 @@ class AudioGen(QObject):
                             buf_ind = buf_nind[0]   # ndenumerate() gives us an n-dimensional index.  We want 1st dimension
                             csv_writer.writerow([self.run_time + (buf_ind / self.rate), buf_ampl, buf_ind, buf_time])
                 self.run_time += self.numSamples / self.rate
+
+                # Send a message to Mic to indicate which sweep freq he should be reading
+                if self._new_tone:
+                    self.buf_man.msgSend("Mic", "curr_sweep_freq", [self.freq, out_time])
+                    self._new_tone = False
+
+                if self.mode == "Delay Meas DONE":
+                    logging.info(f"Delay measurement peak generated at T = {out_time:.9f}")
+                    self.delayMeasPeak_TS = out_time
 
         logging.info("AudioGen finished")
         # release resources
@@ -292,14 +321,20 @@ class AudioGen(QObject):
         self.mode = newMode
 
     def playTone(self, playFreq):
+        # First tell Mic that any previous tone has stopped, and confirm that it was seen
+        out_time = datetime.now().timestamp()
+        self.buf_man.msgSend("Mic", "curr_sweep_freq", [0, out_time])
+        self.buf_man.msgSend("Mic", "REQ_curr_sweep_freq")
+
+        # Check for Out of Bounds
         if (playFreq < C_FREQ_MIN) or (playFreq > C_FREQ_MAX):
             self._audio_on = False
+
+        # Start the Tone
         else:
             self.freq = playFreq
             self._audio_on = True
-
-        # send a message to Mic to indicate which sweep freq he should be reading
-        self.buf_man.msgSend("Mic", "curr_sweep_freq", playFreq)
+            self._new_tone = True    # Set flag so run() will tell Mic after tone starts
 
     def changeOutputIndex(self, newOutputIndex):
         self.outputIndex = newOutputIndex

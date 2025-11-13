@@ -36,7 +36,7 @@ matplotlib.use('QtAgg')
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
-C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep']
+C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep', 'Delay Meas']
 
 C_SPEC_MAX_DB = 80
 C_SPEC_MIN_DB = -80
@@ -749,6 +749,25 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
             self.btn_aud_gen_enable.setText("Sweep")
 
+        elif mode == "Delay Meas":
+            self.lbl_aud_gen_freq2.setEnabled(False)
+            self.sld_aud_gen_freq2.setEnabled(False)
+            self.txt_aud_gen_freq2.setEnabled(False)
+            self.lbl_aud_gen_freq2_unit.setEnabled(False)
+
+            self.lbl_aud_gen_steps.setEnabled(False)
+            self.sld_aud_gen_steps.setEnabled(False)
+            self.txt_aud_gen_steps.setEnabled(False)
+            self.lbl_aud_gen_steps_unit.setEnabled(False)
+
+            ###val = self.sld_aud_gen_freq1.value()
+            ###self.sld_aud_gen_freq2.setValue(val)
+            val = self.txt_aud_gen_freq1.text()
+            self.txt_aud_gen_freq2.setText(val)
+            self.txt_aud_gen_freq2_editingFinished()
+
+            self.btn_aud_gen_enable.setText("Measure")
+
         # Stop Anything Making a Sound
         self.buf_man.msgSend("Gen", "silent", None)
         self.buf_man.msgSend("Ana", "sweep", False)
@@ -782,6 +801,13 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
             self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
             self.buf_man.msgSend("Ana", "clear_sweep", None)
+
+        elif self.btn_aud_gen_enable.text() == "Measure":
+            logging.info("Telling Gen to start measuring delay")
+            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
+            self.buf_man.msgSend("Gen", "enable", True)
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
