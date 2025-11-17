@@ -798,9 +798,10 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
             self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq2.text())
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Ana", "change_sweep_points", self.txt_aud_gen_steps.text())
+            self.buf_man.msgSend("Ana", "clear_sweep", None)
             self.buf_man.msgSend("Ana", "sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
-            self.buf_man.msgSend("Ana", "clear_sweep", None)
+            #self.buf_man.msgSend("Ana", "clear_sweep", None)  <<< Why was this here?  Moved before "sweep"
 
         elif self.btn_aud_gen_enable.text() == "Measure":
             logging.info("Telling Gen to start measuring delay")
