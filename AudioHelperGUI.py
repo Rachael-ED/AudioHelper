@@ -36,7 +36,7 @@ matplotlib.use('QtAgg')
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
-C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Sweep', 'Delay Meas']
+C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Noise Meas', 'Delay Meas', 'Sweep']
 
 C_SPEC_MAX_DB = 80
 C_SPEC_MIN_DB = -80
@@ -367,6 +367,14 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
         elif msg_type == "default_input":
             self.defInput = msg_data
 
+        elif msg_type == "noise_finished":
+            logging.info("AudioAna says Noise Measurement is Finished")
+            self.btn_aud_gen_enable.setText("Noise Meas")
+
+        elif msg_type == "delay_finished":
+            logging.info("AudioAna says Delay Measurement is Finished")
+            self.btn_aud_gen_enable.setText("Delay Meas")
+
         elif msg_type == "sweep_finished":
             logging.info("AudioAna says Sweep Finished")
             self.btn_aud_gen_enable.setText("Sweep")
@@ -402,15 +410,18 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
         elif (msg_type == "MsgBox") or (msg_type == "REQ_MsgBox"):
             param_list = ["", "Ok", "AudioHelper"]   # Default parameters
-            for i in range(0,len(msg_data)):
-                param_list[i] = msg_data[i]
+            if isinstance(msg_data, list):
+                for i in range(0,len(msg_data)):
+                    param_list[i] = msg_data[i]
+            elif msg_data is not None:
+                param_list[0] = msg_data
             [msg_str, msg_box_type, title] = param_list
             ret_val = self.MsgBox(msg_str, msg_box_type, title)
             if msg_type == "REQ_MsgBox":
                 ack_data = ret_val
 
         else:
-            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+            logging.error(f"{self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
         # Acknowledge/Release Message
         self.buf_man.msgAcknowledge(buf_id, ack_data)
@@ -449,15 +460,15 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
         ret_val = msg_box.exec()
 
-        if ret_val == QMessageBox.Ok:
+        if ret_val == QMessageBox.StandardButton.Ok:
             return True
-        elif ret_val == QMessageBox.Cancel:
+        elif ret_val == QMessageBox.StandardButton.Cancel:
             if msg_box_type == "YesNoCancel":
                 return None
             return False
-        elif ret_val == QMessageBox.Yes:
+        elif ret_val == QMessageBox.StandardButton.Yes:
             return True
-        elif ret_val == QMessageBox.No:
+        elif ret_val == QMessageBox.StandardButton.No:
             return False
 
         return None
@@ -736,18 +747,24 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
             self.btn_aud_gen_enable.setText("Play")
 
-        elif mode == "Sweep":
-            self.lbl_aud_gen_freq2.setEnabled(True)
-            self.sld_aud_gen_freq2.setEnabled(True)
-            self.txt_aud_gen_freq2.setEnabled(True)
-            self.lbl_aud_gen_freq2_unit.setEnabled(True)
+        elif mode == "Noise Meas":
+            self.lbl_aud_gen_freq2.setEnabled(False)
+            self.sld_aud_gen_freq2.setEnabled(False)
+            self.txt_aud_gen_freq2.setEnabled(False)
+            self.lbl_aud_gen_freq2_unit.setEnabled(False)
 
-            self.lbl_aud_gen_steps.setEnabled(True)
-            self.sld_aud_gen_steps.setEnabled(True)
-            self.txt_aud_gen_steps.setEnabled(True)
-            self.lbl_aud_gen_steps_unit.setEnabled(True)
+            self.lbl_aud_gen_steps.setEnabled(False)
+            self.sld_aud_gen_steps.setEnabled(False)
+            self.txt_aud_gen_steps.setEnabled(False)
+            self.lbl_aud_gen_steps_unit.setEnabled(False)
 
-            self.btn_aud_gen_enable.setText("Sweep")
+            ###val = self.sld_aud_gen_freq1.value()
+            ###self.sld_aud_gen_freq2.setValue(val)
+            val = self.txt_aud_gen_freq1.text()
+            self.txt_aud_gen_freq2.setText(val)
+            self.txt_aud_gen_freq2_editingFinished()
+
+            self.btn_aud_gen_enable.setText("Noise Meas")
 
         elif mode == "Delay Meas":
             self.lbl_aud_gen_freq2.setEnabled(False)
@@ -766,11 +783,24 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
             self.txt_aud_gen_freq2.setText(val)
             self.txt_aud_gen_freq2_editingFinished()
 
-            self.btn_aud_gen_enable.setText("Measure")
+            self.btn_aud_gen_enable.setText("Delay Meas")
+
+        elif mode == "Sweep":
+            self.lbl_aud_gen_freq2.setEnabled(True)
+            self.sld_aud_gen_freq2.setEnabled(True)
+            self.txt_aud_gen_freq2.setEnabled(True)
+            self.lbl_aud_gen_freq2_unit.setEnabled(True)
+
+            self.lbl_aud_gen_steps.setEnabled(True)
+            self.sld_aud_gen_steps.setEnabled(True)
+            self.txt_aud_gen_steps.setEnabled(True)
+            self.lbl_aud_gen_steps_unit.setEnabled(True)
+
+            self.btn_aud_gen_enable.setText("Sweep")
 
         # Stop Anything Making a Sound
         self.buf_man.msgSend("Gen", "silent", None)
-        self.buf_man.msgSend("Ana", "sweep", False)
+        self.buf_man.msgSend("Ana", "measure_stop")
 
     def btn_aud_gen_enable_click(self):
         if self.btn_aud_gen_enable.text() == "Stop":
@@ -786,10 +816,28 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
             self.buf_man.msgSend("Gen", "enable", True)
             self.btn_aud_gen_enable.setText("Stop")
 
-        elif self.btn_aud_gen_enable.text() == "Stop Sweep":
-            logging.info("Telling AudioAna to stop sweeping")
-            self.buf_man.msgSend("Ana", "sweep", False)
-            self.btn_aud_gen_enable.setText("Sweep")
+        elif self.btn_aud_gen_enable.text() == "Noise Meas":
+            logging.info("Telling Ana to start measuring delay")
+            self.buf_man.msgSend("Ana", "measure_noise", True)
+            self.btn_aud_gen_enable.setText("Stop Noise")
+
+        elif self.btn_aud_gen_enable.text() == "Stop Noise":
+            logging.info("Telling AudioAna to stop delay measurement")
+            self.buf_man.msgSend("Ana", "measure_stop")
+            self.btn_aud_gen_enable.setText("Noise Meas")
+
+        elif self.btn_aud_gen_enable.text() == "Delay Meas":
+            logging.info("Telling Ana to start measuring delay")
+            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
+            self.buf_man.msgSend("Ana", "measure_delay", True)
+            self.btn_aud_gen_enable.setText("Stop Delay")
+
+        elif self.btn_aud_gen_enable.text() == "Stop Delay":
+            logging.info("Telling AudioAna to stop delay measurement")
+            self.buf_man.msgSend("Ana", "measure_stop")
+            self.btn_aud_gen_enable.setText("Delay Meas")
 
         elif self.btn_aud_gen_enable.text() == "Sweep":
             logging.info("Telling AudioAna to start sweeping")
@@ -799,16 +847,16 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Ana", "change_sweep_points", self.txt_aud_gen_steps.text())
             self.buf_man.msgSend("Ana", "clear_sweep", None)
-            self.buf_man.msgSend("Ana", "sweep", True)
+            self.buf_man.msgSend("Ana", "measure_sweep", True)
             self.btn_aud_gen_enable.setText("Stop Sweep")
-            #self.buf_man.msgSend("Ana", "clear_sweep", None)  <<< Why was this here?  Moved before "sweep"
+            #self.buf_man.msgSend("Ana", "clear_sweep", None)  <<< Why was this here?  Moved before "measure_sweep"
 
-        elif self.btn_aud_gen_enable.text() == "Measure":
-            logging.info("Telling Gen to start measuring delay")
-            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
-            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
-            self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
-            self.buf_man.msgSend("Gen", "enable", True)
+        elif self.btn_aud_gen_enable.text() == "Stop Sweep":
+            logging.info("Telling AudioAna to stop sweeping")
+            self.buf_man.msgSend("Ana", "measure_stop")
+            self.btn_aud_gen_enable.setText("Sweep")
+
+
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
@@ -1080,7 +1128,7 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
     def remove_plot(self, name):
         if len(self.line_dict) <= 1:
-            logging.info(f"ERROR: Cannot remove last plot")
+            logging.error(f"Cannot remove last plot")
             return
         if name in self.line_dict.keys():
             ###logging.info(f"Removing plot line: {name}")

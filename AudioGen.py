@@ -75,7 +75,7 @@ class AudioGen(QObject):
         self._reopen_stream = False
         self.run_time = None           # Running time
 
-        self.delayMeasPeak_TS = 0   # Timestamp of last generated delay measurement peak
+        self.delayMeasPeak_TS = None   # Timestamp of last generated delay measurement peak
 
         # Set Up Debug File
         self.dbg_gen_file = None
@@ -115,6 +115,9 @@ class AudioGen(QObject):
 
         elif msg_type == "play_tone":
             self.playTone(msg_data)
+
+        elif msg_type == "gen_pulse":
+            self.genPulse(msg_data)
 
         elif msg_type == "silent":
             self.enable(False)
@@ -157,18 +160,15 @@ class AudioGen(QObject):
                 "numSamples": self.numSamples
             }
 
-        elif msg_type == "REQ_sweep_mode":
-            if self.mode == "Sweep":
-                ack_data = True
-            else:
-                ack_data = False
+        elif msg_type == "REQ_mode":
+            ack_data = self.mode
         elif msg_type == "REQ_volume":
             ack_data = self.vol
         elif msg_type == "REQ_delay_meas_peak_ts":
             ack_data = self.delayMeasPeak_TS
 
         else:
-            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+            logging.error(f"{self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
         # Acknowledge/Release Message
         self.buf_man.msgAcknowledge(buf_id, ack_data)
@@ -318,6 +318,7 @@ class AudioGen(QObject):
                 #logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
 
     def changeMode(self, newMode):
+        logging.info(f"Gen changing mode to {newMode}")
         self.mode = newMode
 
     def playTone(self, playFreq):
@@ -335,6 +336,20 @@ class AudioGen(QObject):
             self.freq = playFreq
             self._audio_on = True
             self._new_tone = True    # Set flag so run() will tell Mic after tone starts
+
+    def genPulse(self, pulseFreq):
+        # Check for Out of Bounds
+        if (pulseFreq >= C_FREQ_MIN) and (pulseFreq <= C_FREQ_MAX):
+            self.freq = pulseFreq
+
+        if self.mode == "Delay Meas DONE":
+            self.mode = "Delay Meas"
+
+        if self.mode == "Delay Meas":
+            self.delayMeasPeak_TS = None
+            self.enable(True)
+        else:
+            logging.error(f"Attempting to generate pulse while in {self.mode} mode, not in Delay Meas mode.  Aborting attempt.")
 
     def changeOutputIndex(self, newOutputIndex):
         self.outputIndex = newOutputIndex

@@ -35,6 +35,9 @@ C_SWEEP_DWELL_DUR = 0.1  # Time for each sweep tone [s]
 
 C_SWEEP_BASELINE_VOL = 10 ** (-12 / 20)  # -12dB
 
+C_DELAY_SPIKE_THRESH_ABOVE_NOISE_DB = 3
+C_SETTLE_FACTOR = 1.25
+
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -69,16 +72,15 @@ class AudioAnalyzer(QObject):
         self.buf_man = BufMan.BufferManager(name, ipc_dict)
 
         self.sweep_on = False
-        self.sweep_running = False
+        self.delay_meas_on = False
+        self.noise_meas_on = False
         self.state = "IDLE"
         self._stop_requested = False
         self.start_freq = C_FREQ_MIN
         self.stop_freq = C_FREQ_MAX
         self.sweep_freq = 0
-        self.sweep_points = 100
         self.gain_db = 60
         self.settle_dur = 1.000                 # Min time [seconds] to allow system to settle
-        self.noise_floor_ampl_db = -15          # Noise floor for delay peak detection
         self.hist_dur = 3                       # Length [seconds] of history buffer
         self.hist_list = []                     # List of recent analysis runs.  [timestamp, freq_list, ampl_list]
 
@@ -86,14 +88,28 @@ class AudioAnalyzer(QObject):
         self.cal_freq_list = []
         self.cal_ampl_list = []
 
-        self.maxAmpl_TS = 0
+        self.runNoiseMeas = False     # run() sets to True to start measurement, and analyze() sets to False when done
+        self.measNoise_points = 10    # Number of noise measurements to take
+        self.measNoise_db = [np.nan] * self.measNoise_points    # Measurements [dB], collected by analyze()
+        self.measNoiseCnt = 0                                   # Number of measurements captured
+        self.measNoiseMin_db = None
+        self.measNoiseAvg_db = None
+        self.measNoiseMax_db = None
 
-        self.sweepFreqs = [np.nan] * self.sweep_points
-        self.sweepAmpls = [np.nan] * self.sweep_points
-        self.numSweepFreqs = 0
-        self.found = True
-        self.freqFromMic = 0
-        self.rejects = 0
+        self.runDelayMeas = False     # run() sets to True to start measurement, and analyze() sets to False when done
+        self.measDelaySpikeThresh_db = -15 # Threshold [dB] of buffer power to detect spike
+        self.measDelaySpike_TS = None      # analyze() sets to time stamp of detected spike
+        self.measDelay_points = 5          # Number of delay measurements to run
+        self.measDelays = [np.nan] * self.measDelay_points   # Measurements, calculated by run()
+        self.measDelaysCnt = 0                               # Number of measurements captured
+        self.measDelayMin = None
+        self.measDelayAvg = None
+        self.measDelayMax = None
+
+        self.runSweepMeas = False  # run() sets to True to start measurement, and analyze() sets to False when done
+        self.sweep_points = 100  # Number of sweep frequencies to measure
+        self.sweepFreqs = [np.nan] * self.sweep_points  # Sweep frequencies, recorded by analyze()
+        self.sweepAmpls = [np.nan] * self.sweep_points  # Measured sweep amplitudes, calculated by analyze()
 
         self.analysis_num = 0  # Just a running counter of times analyze() is called, for debug
         self.threshold = 0.90
@@ -113,8 +129,17 @@ class AudioAnalyzer(QObject):
             [voltageAndTime, inputBuf_TS] = msg_data
             self.analyze(voltageAndTime, inputBuf_TS, -1, 0)
 
-        elif msg_type == "sweep":
-            self.sweep(msg_data)
+        elif msg_type == "measure_sweep":
+            self.measure_sweep(msg_data)
+
+        elif msg_type == "measure_delay":
+            self.measure_delay(msg_data)
+
+        elif msg_type == "measure_noise":
+            self.measure_noise(msg_data)
+
+        elif msg_type == "measure_stop":
+            self.measure_stop()
 
         elif msg_type == "apply_cal":
             self.apply_cal = msg_data
@@ -151,18 +176,31 @@ class AudioAnalyzer(QObject):
         elif msg_type == "change_threshold":
             self.threshold = msg_data
 
-        elif msg_type == "REQ_max_ampl_ts":
-            ack_data = self.maxAmpl_TS
-
         else:
-            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+            logging.error(f"{self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
         # Acknowledge/Release Message
         self.buf_man.msgAcknowledge(buf_id, ack_data)
 
-    def sweep(self, sweepOn=True):
-        self.sweep_on = sweepOn
-        logging.info(f"AudioAnalyzer sweep = {sweepOn}")
+    def measure_sweep(self, measOn=True):
+        self.sweep_on = measOn
+        logging.info(f"AudioAnalyzer sweep = {measOn}")
+
+    def measure_delay(self, measOn=True):
+        self.delay_meas_on = measOn
+        logging.info(f"AudioAnalyzer delay measurement = {measOn}")
+
+    def measure_noise(self, measOn=True):
+        self.noise_meas_on = measOn
+        logging.info(f"AudioAnalyzer noise measurement = {measOn}")
+
+    def measure_stop(self):
+        if self.noise_meas_on:
+            self.measure_noise(False)
+        if self.delay_meas_on:
+            self.measure_delay(False)
+        if self.sweep_on:
+            self.measure_sweep(False)
 
     def changeStartFreq(self, newFreq):
         if re.search('^\d+(\.\d+)?$', newFreq):
@@ -331,7 +369,6 @@ class AudioAnalyzer(QObject):
         dbg_out_en = True
         [time_list, volt_list] = voltageAndTime
 
-        ana_state = self.state
         self.analysis_num += 1
         write_dbg = False
 
@@ -372,11 +409,23 @@ class AudioAnalyzer(QObject):
         powerTotal = np.sum(ampl_list ** 2)
         powerTotal_db = 10*np.log10(powerTotal)
         #logging.info(f"powerTotal = {powerTotal:.3f} = {powerTotal_db:.3f}dB")
-        if powerTotal_db > self.noise_floor_ampl_db:
+
+        # Collect Noise Measurements
+        meas_noise_cnt = self.measNoiseCnt
+        if self.runNoiseMeas and meas_noise_cnt < self.measNoise_points:
+            self.measNoise_db[meas_noise_cnt] = powerTotal_db
+            meas_noise_cnt += 1
+            self.measNoiseCnt = meas_noise_cnt
+            if meas_noise_cnt >= self.measNoise_points:
+                self.runNoiseMeas = False
+
+        # Detect Loud Spike for Delay Measurement
+        if self.runDelayMeas and powerTotal_db > self.measDelaySpikeThresh_db:
             max_ampl_ind = np.argmax(volt_list)
             max_ampl_TS = inputBuf_TS + (max_ampl_ind*t_samp)
             logging.info(f"Found loud spike at T = {max_ampl_TS}")
-            self.maxAmpl_TS = max_ampl_TS
+            self.measDelaySpike_TS = max_ampl_TS
+            self.runDelayMeas = False
 
         # Send Amplitude Spectrum to Guido
         spec_buf = ["Live", freq_list, ampl_list]
@@ -532,7 +581,7 @@ class AudioAnalyzer(QObject):
         # --------------------------------------------------------------------------------
         # DETECT SUCCESSFUL SWEEP POINT
         #
-        if self.sweep_running and (currSweepFreq > 0):
+        if self.runSweepMeas and (currSweepFreq == self.sweep_freq) and (currSweepFreq > 0):
 
             # Consider the Current Sweep Point Good if History Buffer
             #     is filled with valid frequency and amplitude within 3dB
@@ -554,7 +603,7 @@ class AudioAnalyzer(QObject):
                     if np.isnan(self.sweepFreqs[k]):
                         self.sweepFreqs[k] = currSweepFreq
                         self.sweepAmpls[k] = np.sqrt(avg_powerInBOI)
-                        self.found = True
+                        self.runSweepMeas = False
                         spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
                         plot_sweep_send_time = time.monotonic()
                         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
@@ -625,6 +674,10 @@ class AudioAnalyzer(QObject):
         self.sweep_freq = 0
         next_it_time = time.monotonic()
         sweep_freq_cnt = 0
+        timer_expiry = 0   # Timer expiry time, used for timed state machine transitions
+        genMode = "TBD"
+        prev_dbg_str = "??"
+        dbg_str = "??"
         while not self._stop_requested:
             # --- Wait for Next Iteration ---
             sleep_dur = next_it_time - time.monotonic()
@@ -632,49 +685,214 @@ class AudioAnalyzer(QObject):
                 time.sleep(sleep_dur)
             next_it_time = next_it_time + C_SWEEP_DWELL_DUR
 
-            # --- Run the Sweep ---
-            if self.sweep_on:
+            # --- Capture Current Asynchronous State ---
+            sweep_on = self.sweep_on
+            delay_meas_on = self.delay_meas_on
+            noise_meas_on = self.noise_meas_on
 
-                if self.found:
-                    self.numSweepFreqs = 0
+            # --- Debug ---
+            dbg_str = (f"AudioAnalyzer : {self.state}\n"
+                        f"    noise_meas_on = {noise_meas_on}\n"
+                        f"    delay_meas_on = {delay_meas_on}\n"
+                        f"    sweep_on      = {sweep_on}")
 
-                    # --- Get Sweep Started ---
-                    if not self.sweep_running:
-                        logging.info(f"{self.name}: AudioAnalyzer sweep started.")
-                        self.sweep_running = True
-                        if self.start_freq > self.stop_freq:
-                            (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
-                        sweep_freq_cnt = 0
+            if dbg_str != prev_dbg_str:
+                logging.info(dbg_str)
+                prev_dbg_str = dbg_str
+
+            # --- RUN SM: Stop Detection ---
+            meas_on = sweep_on or delay_meas_on or noise_meas_on
+            if self.state != "IDLE" and not meas_on:
+                logging.info(f"{self.name}: AudioAnalyzer stopped from state = {self.state}.")
+
+                self.measure_stop()
+                self.state = "IDLE"
+
+                self.buf_man.msgSend("Gen", "play_tone", 0)  # Turn off Gen
+                if genMode != "TBD":
+                    self.buf_man.msgSend("Gen", "change_mode", genMode)
+                    genMode = "TBD"
+
+                self.sweepFreqs = [np.nan] * self.sweep_points
+                self.sweepAmpls = [np.nan] * self.sweep_points
+                self.runSweepMeas = False
+
+            # --- RUN SM: IDLE State ---
+            elif self.state == "IDLE":
+                if meas_on:
+                    if sweep_on:
+                        self.measure_noise(True)
+                        self.measure_delay(True)
+                    elif delay_meas_on:
+                        self.measure_noise(True)
+
+                    self.buf_man.msgSend("Gen", "play_tone", 0)  # Turn off Gen
+
+                    timer_expiry = time.monotonic() + 2    # Wait 2 seconds before we start
+                    self.state = "START_SETTLE"
+
+            elif self.state == "START_SETTLE":
+                if time.monotonic() >= timer_expiry:
+                    if noise_meas_on:
+                        self.state = "NOISE_INIT"
+                    elif delay_meas_on:
+                        self.state = "DELAY_INIT"
+                    elif sweep_on:
+                        self.state = "SWEEP_INIT"
                     else:
-                        sweep_freq_cnt = sweep_freq_cnt + 1
+                        self.state = "IDLE"
 
-                    self.sweep_freq = self.start_freq * (self.stop_freq / self.start_freq) ** (
-                                sweep_freq_cnt / (self.sweep_points - 1))
+            # --- RUN SM: Noise Measurement ---
+            elif self.state == "NOISE_INIT":
+                if not self.runNoiseMeas:    # Wait for previous measurement.  (Shouldn't happen)
+                    logging.info(f"{self.name}: AudioAnalyzer noise measurement started.")
+                    self.measNoise_db = [np.nan] * self.measNoise_points
+                    self.measNoiseCnt = 0
+                    self.state = "NOISE_MEAS"
+                    self.runNoiseMeas = True
 
-                    # --- Generate Sweep Tone ---
-                    logging.info(f"{self.name}: AudioAnalyzer sweep generating {self.sweep_freq}Hz.")
+            elif self.state == "NOISE_MEAS":
+                if not self.runNoiseMeas:    # Wait for measurement to complete
+                    self.measNoiseMin_db = np.min(self.measNoise_db)
+                    self.measNoiseAvg_db = np.average(self.measNoise_db)
+                    self.measNoiseMax_db = np.max(self.measNoise_db)
 
-                    # --- Determine Next Sweep Tone ---
+                    self.measDelaySpikeThresh_db = self.measNoiseMax_db + C_DELAY_SPIKE_THRESH_ABOVE_NOISE_DB
+
+                    msg_str = (f"Measured Noise:\n" 
+                                         f"Min:    {self.measNoiseMin_db:.3f}dB\n"
+                                         f"Avg:    {self.measNoiseAvg_db:.3f}dB\n"
+                                         f"Max:    {self.measNoiseMax_db:.3f}dB\n"
+                                         f"Cnt:    {self.measNoiseCnt} buffers\n"
+                                         f"Thresh: {self.measDelaySpikeThresh_db:.3f}db")
+                    msg_str2 = f"\nNoise Data [dB]:\n" + np.array2string(np.array(self.measNoise_db), formatter={'float_kind':lambda x: "%.3f" % x})
+                    logging.info(msg_str + msg_str2)
+
+                    self.measure_noise(False)
+                    if delay_meas_on:
+                        self.state = "DELAY_INIT"
+                    elif sweep_on:
+                        self.state = "SWEEP_INIT"
+                    else:
+                        self.buf_man.msgSend("Guido", "MsgBox", msg_str)
+                        self.buf_man.msgSend("Guido", "noise_finished", None)
+                        self.state = "IDLE"
+
+            # --- RUN SM: Delay Measurement ---
+            elif self.state == "DELAY_INIT":
+                if not self.runDelayMeas:    # Wait for previous measurement.  (Shouldn't happen)
+                    logging.info(f"{self.name}: AudioAnalyzer delay measurement started.")
+                    self.measDelaySpike_TS = None
+                    self.measDelays = [np.nan] * self.measDelay_points
+                    self.measDelaysCnt = 0
+                    retry_cnt = 0
+                    genMode = self.buf_man.msgSend("Gen", "REQ_mode", None)
+                    self.buf_man.msgSend("Gen", "change_mode", "Delay Meas")
+                    self.state = "DELAY_ARM_DETECT"
+
+            elif self.state == "DELAY_ARM_DETECT":
+                    self.runDelayMeas = True
+                    timer_expiry = time.monotonic() + 1
+                    self.state = "DELAY_GEN_PULSE"
+
+            elif self.state == "DELAY_GEN_PULSE":
+                if time.monotonic() >= timer_expiry:   # Wait to ensure analyze() starts looking for pulse
+                    pulse_freq = self.start_freq
+                    if self.measDelay_points > 0:
+                        pulse_freq = self.start_freq * (self.stop_freq / self.start_freq) ** (
+                                self.measDelaysCnt / (self.measDelay_points - 1))
+
+                    self.buf_man.msgSend("Gen", "gen_pulse", pulse_freq)
+                    timer_expiry = time.monotonic() + 4
+                    self.state = "DELAY_MEAS"
+
+            elif self.state == "DELAY_MEAS":
+                if not self.runDelayMeas:    # Wait for measurement to complete
+                    pulse_gen_TS = self.buf_man.msgSend("Gen", "REQ_delay_meas_peak_ts", None)
+                    pulse_det_TS = self.measDelaySpike_TS
+
+                    if pulse_gen_TS is None:
+                        logging.error("Pulse wasn't generated.  Retrying.")
+                    elif pulse_det_TS is None:
+                        logging.error("Pulse timestamp wasn't detected.  Retrying.")
+                    elif pulse_det_TS <= pulse_gen_TS:
+                        logging.info("Pulse wasn't properly detected.  Retrying.")
+                    else:
+                        pulse_delay = pulse_det_TS - pulse_gen_TS
+                        self.measDelays[self.measDelaysCnt] = pulse_delay
+                        self.measDelaysCnt += 1
+
+                    if self.measDelaysCnt < self.measDelay_points:
+                        self.state = "DELAY_ARM_DETECT"
+                    else:
+                        self.measDelayMin = np.min(self.measDelays)
+                        self.measDelayAvg = np.average(self.measDelays)
+                        self.measDelayMax = np.max(self.measDelays)
+
+                        self.settle_dur = self.measDelayMax * C_SETTLE_FACTOR
+
+                        msg_str = (f"Measured Delay: \n"
+                                             f"Min:    {self.measDelayMin:.6f}s\n"
+                                             f"Avg:    {self.measDelayAvg:.6f}s\n"
+                                             f"Max:    {self.measDelayMax:.6f}s\n"
+                                             f"Cnt:    {self.measDelaysCnt} pulses\n"
+                                             f"Settle: {self.settle_dur:.6f}s")
+                        msg_str2 = f"\nDelay Data [s]:\n" + np.array2string(np.array(self.measDelays), formatter={'float_kind':lambda x: "%.6f" % x})
+                        logging.info(msg_str + msg_str2)
+
+                        self.measure_delay(False)
+                        self.buf_man.msgSend("Gen", "change_mode", genMode)
+                        genMode = "TBD"
+                        if sweep_on:
+                            self.state = "SWEEP_INIT"
+                        else:
+                            self.buf_man.msgSend("Guido", "MsgBox", msg_str)
+                            self.buf_man.msgSend("Guido", "delay_finished", None)
+                            self.state = "IDLE"
+
+                elif time.monotonic() >= timer_expiry:   # Measurement didn't complete before timeout
+                    logging.error("Pulse wasn't detected.  Retrying.")
+                    self.measure_delay(False)
+                    self.state = "DELAY_ARM_DETECT"
+
+
+            # --- RUN SM: Delay Measurement ---
+            elif self.state == "SWEEP_INIT":
+                if not self.runSweepMeas:    # Wait for previous measurement.  (Shouldn't happen)
+                    logging.info(f"{self.name}: AudioAnalyzer sweep started.")
+                    if self.start_freq > self.stop_freq:
+                        (self.start_freq, self.stop_freq) = (self.stop_freq, self.start_freq)
+                    sweep_freq_cnt = 0
+                    self.state = "SWEEP_GEN_TONE"
+
+            elif self.state == "SWEEP_GEN_TONE":
+                self.sweep_freq = self.start_freq * (self.stop_freq / self.start_freq) ** (
+                        sweep_freq_cnt / (self.sweep_points - 1))
+                sweep_freq_cnt = sweep_freq_cnt + 1
+
+                logging.info(f"{self.name}: AudioAnalyzer sweep generating {self.sweep_freq}Hz.")
+                self.buf_man.msgSend("Gen", "play_tone", self.sweep_freq)
+                self.runSweepMeas = True
+                self.state = "SWEEP_MEAS"
+
+            elif self.state == "SWEEP_MEAS":
+                if not self.runSweepMeas:    # Wait for measurement to complete
                     # When we're done, we'll generate 0, which stops Gen
-
                     if sweep_freq_cnt >= self.sweep_points:
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
-                        self.sweep(False)
+                        self.measure_sweep(False)
+                        self.buf_man.msgSend("Gen", "play_tone", 0)  # Turn off Gen
                         self.buf_man.msgSend("Guido", "sweep_finished", None)
-                    else:
-                        # --- SEND MESSAGE TO GEN TO PLAY TONE
-                        self.buf_man.msgSend("Gen", "play_tone", self.sweep_freq)
-                        self.found = False
+                        self.state = "IDLE"
 
-            # --- Stop the Sweep ---
-            elif self.sweep_running:
-                logging.info(f"{self.name}: AudioAnalyzer sweep stopped.")
-                self.sweep_running = False
-                self.buf_man.msgSend("Gen", "play_tone", 0)  # Turn off Gen
-                self.sweepFreqs = [np.nan] * self.sweep_points
-                self.sweepAmpls = [np.nan] * self.sweep_points
-                self.found = True
+                    else:
+                        self.state = "SWEEP_GEN_TONE"
+
+            # --- RUN SM: INVALID STATE ---
+            else:
+                logging.error(f"Invalid Ana Run State : {self.state}")
+                self.state = "IDLE"
 
         logging.info("AudioAnalyzer finished")
         self.finished.emit()

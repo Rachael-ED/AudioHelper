@@ -108,7 +108,7 @@ class MicReader(QObject):
             }
 
         else:
-            logging.info(f"ERROR: {self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
+            logging.error(f"{self.name} received unsupported {msg_type} message from {snd_name} : {msg_data}")
 
         # Acknowledge/Release Message
         self.buf_man.msgAcknowledge(buf_id, ack_data)
@@ -145,7 +145,8 @@ class MicReader(QObject):
             if self._audio_on:
                 self.tempFramesPerBuff = 16384
                 # find out if Gen is in sweep mode or not
-                sweepMode = self.buf_man.msgSend("Gen", "REQ_sweep_mode", None)
+                genMode = self.buf_man.msgSend("Gen", "REQ_mode", None)
+                sweepMode = True if genMode == "Sweep" else False
 
                 data = 0
                 inputBuf_TS = datetime.now().timestamp()

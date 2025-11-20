@@ -136,7 +136,7 @@ class BufferManager:
 
     def ipcSignal(self, rx_name):
         if rx_name not in self.ipc_dict:
-            logging.info(f"ERROR: No IPC signal found for {rx_name}")
+            logging.error(f"No IPC signal found for {rx_name}")
             return None
         return self.ipc_dict[rx_name]
 
@@ -157,7 +157,7 @@ class BufferManager:
 
         # Retrieve Signal for Communication
         if rx_name not in self.ipc_dict:
-            logging.info(f"ERROR: {self.name} is unable to send message to {rx_name}")
+            logging.error(f"{self.name} is unable to send message to {rx_name}")
             return None
         ipc_sig = self.ipc_dict[rx_name]
 
