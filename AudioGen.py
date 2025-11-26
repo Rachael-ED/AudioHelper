@@ -192,6 +192,8 @@ class AudioGen(QObject):
         stream = sound.open(format=self.format, channels=self.channels, rate=self.rate, output=True,
                             output_device_index=self.outputIndex, frames_per_buffer=self.framesPerBuffer)
 
+        pulse_state = "IDLE"
+        prev_pulse_state = "IDLE"
         while not self._stop_requested:
             # Determine Volume We'll Finish the Buffer With
             #     If the volume changes, we'll bleed that out over the course of the buffer
@@ -218,6 +220,7 @@ class AudioGen(QObject):
                 self.t_end = self.numSamples/self.rate
                 time.sleep(1)
                 self.run_time = None
+                pulse_state = "IDLE"
 
             # Otherwise, Generate Output
             else:
@@ -227,21 +230,33 @@ class AudioGen(QObject):
                     self.run_time = buf_time
 
                 # Generate Delay Measurement Pulse
-                if mode == "Delay Meas":           # Step 1: Ramp down to 0
-                    end_vol = 0
-                    self.mode = "Delay Meas 2"
-                    mode = "Delay Meas X"
-                elif mode == "Delay Meas 2":       # Step 2: Ramp up to volume
-                    self.mode = "Delay Meas 3"
-                    mode = "Delay Meas X"
-                elif mode == "Delay Meas 3":       # Step 3: Ramp back down to 0
-                    end_vol = 0
-                    self.mode = "Delay Meas DONE"
-                    mode = "Delay Meas X"
-                    self.enable(False)
+                if mode == "Delay Meas":
+                    if pulse_state == "IDLE":                # Step 1: Ramp down to 0
+                        end_vol = 0
+                        pulse_state = "RAMP_QUIET"
+                    elif pulse_state == "RAMP_QUIET":       # Step 2: Ramp up to volume
+                        pulse_state = "PULSE_RAMP_UP"
+                    elif pulse_state == "PULSE_RAMP_UP":     # Step 3: Ramp back down to 0
+                        end_vol = 0
+                        pulse_state = "PULSE_DONE"
+                    elif pulse_state == "PULSE_DONE":
+                        end_vol = 0
+                        pulse_state = "IDLE"
+                        self.mode = "Delay Meas DONE"
+                        self.enable(False)
+                    else:
+                        logging.error("Invalid pulse state")
+                        pulse_state = "IDLE"
+                else:
+                    pulse_state = "IDLE"
+
+                # Debug Pulse Generation
+                if False and pulse_state != prev_pulse_state:
+                    logging.info(f"Generator pulse state = {pulse_state}")
+                    prev_pulse_state = pulse_state
 
                 # Start with Tone of Unit Amplitude
-                if (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas X"):
+                if (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas"):
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
@@ -266,7 +281,8 @@ class AudioGen(QObject):
                 out_array = np.multiply(pitch_array, vol_array).astype(np.float32)
 
                 # Write to Output
-                out_time = datetime.now().timestamp()
+                out_time = datetime.now()
+                out_time_TS = out_time.timestamp()
                 stream.write(out_array, num_frames=self.numSamples)
                 if not self.dbg_gen_file is None:
                     with open(self.dbg_gen_file, mode='a') as csv_file:
@@ -278,12 +294,12 @@ class AudioGen(QObject):
 
                 # Send a message to Mic to indicate which sweep freq he should be reading
                 if self._new_tone:
-                    self.buf_man.msgSend("Mic", "curr_sweep_freq", [self.freq, out_time])
+                    self.buf_man.msgSend("Mic", "curr_sweep_freq", [self.freq, out_time_TS])
                     self._new_tone = False
 
-                if self.mode == "Delay Meas DONE":
-                    logging.info(f"Delay measurement peak generated at T = {out_time:.9f}")
-                    self.delayMeasPeak_TS = out_time
+                if pulse_state == "PULSE_DONE":
+                    logging.info(f"Delay measurement {self.currFreq:.1f}Hz peak generated at T = {out_time_TS:.9f} = {out_time}")
+                    self.delayMeasPeak_TS = out_time_TS
 
         logging.info("AudioGen finished")
         # release resources
@@ -323,8 +339,8 @@ class AudioGen(QObject):
 
     def playTone(self, playFreq):
         # First tell Mic that any previous tone has stopped, and confirm that it was seen
-        out_time = datetime.now().timestamp()
-        self.buf_man.msgSend("Mic", "curr_sweep_freq", [0, out_time])
+        out_time_TS = datetime.now().timestamp()
+        self.buf_man.msgSend("Mic", "curr_sweep_freq", [0, out_time_TS])
         self.buf_man.msgSend("Mic", "REQ_curr_sweep_freq")
 
         # Check for Out of Bounds
@@ -346,6 +362,7 @@ class AudioGen(QObject):
             self.mode = "Delay Meas"
 
         if self.mode == "Delay Meas":
+            logging.info("Clearing delayMeasPeak_TS")
             self.delayMeasPeak_TS = None
             self.enable(True)
         else:

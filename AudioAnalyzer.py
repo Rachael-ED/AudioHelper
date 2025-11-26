@@ -423,7 +423,8 @@ class AudioAnalyzer(QObject):
         if self.runDelayMeas and powerTotal_db > self.measDelaySpikeThresh_db:
             max_ampl_ind = np.argmax(volt_list)
             max_ampl_TS = inputBuf_TS + (max_ampl_ind*t_samp)
-            logging.info(f"Found loud spike at T = {max_ampl_TS}")
+            max_ampl_time = datetime.fromtimestamp(max_ampl_TS)
+            logging.info(f"Found loud ({powerTotal_db:.3f} > {self.measDelaySpikeThresh_db:.3f}) spike at T = {max_ampl_TS} = {max_ampl_time}")
             self.measDelaySpike_TS = max_ampl_TS
             self.runDelayMeas = False
 
@@ -760,12 +761,12 @@ class AudioAnalyzer(QObject):
                     self.measDelaySpikeThresh_db = self.measNoiseMax_db + C_DELAY_SPIKE_THRESH_ABOVE_NOISE_DB
 
                     msg_str = (f"Measured Noise:\n" 
-                                         f"Min:    {self.measNoiseMin_db:.3f}dB\n"
-                                         f"Avg:    {self.measNoiseAvg_db:.3f}dB\n"
-                                         f"Max:    {self.measNoiseMax_db:.3f}dB\n"
-                                         f"Cnt:    {self.measNoiseCnt} buffers\n"
-                                         f"Thresh: {self.measDelaySpikeThresh_db:.3f}db")
-                    msg_str2 = f"\nNoise Data [dB]:\n" + np.array2string(np.array(self.measNoise_db), formatter={'float_kind':lambda x: "%.3f" % x})
+                                         f"    Min:    {self.measNoiseMin_db:.3f}dB\n"
+                                         f"    Avg:    {self.measNoiseAvg_db:.3f}dB\n"
+                                         f"    Max:    {self.measNoiseMax_db:.3f}dB\n"
+                                         f"    Cnt:    {self.measNoiseCnt} buffers\n"
+                                         f"    Thresh: {self.measDelaySpikeThresh_db:.3f}db")
+                    msg_str2 = f"\n    Noise Data [dB]:\n" + np.array2string(np.array(self.measNoise_db), formatter={'float_kind':lambda x: "%.3f" % x})
                     logging.info(msg_str + msg_str2)
 
                     self.measure_noise(False)
@@ -789,8 +790,11 @@ class AudioAnalyzer(QObject):
                     genMode = self.buf_man.msgSend("Gen", "REQ_mode", None)
                     self.buf_man.msgSend("Gen", "change_mode", "Delay Meas")
                     self.state = "DELAY_ARM_DETECT"
+                    timer_expiry = time.monotonic()  # No need to pause in DELAY_ARM_DETECT
 
             elif self.state == "DELAY_ARM_DETECT":
+                if time.monotonic() >= timer_expiry:
+                    logging.info("Arming Ana to Detect Pulses")
                     self.runDelayMeas = True
                     timer_expiry = time.monotonic() + 1
                     self.state = "DELAY_GEN_PULSE"
@@ -813,14 +817,18 @@ class AudioAnalyzer(QObject):
 
                     if pulse_gen_TS is None:
                         logging.error("Pulse wasn't generated.  Retrying.")
+                        timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     elif pulse_det_TS is None:
                         logging.error("Pulse timestamp wasn't detected.  Retrying.")
+                        timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     elif pulse_det_TS <= pulse_gen_TS:
                         logging.info("Pulse wasn't properly detected.  Retrying.")
+                        timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     else:
                         pulse_delay = pulse_det_TS - pulse_gen_TS
                         self.measDelays[self.measDelaysCnt] = pulse_delay
                         self.measDelaysCnt += 1
+                        timer_expiry = time.monotonic()         # No delay needed
 
                     if self.measDelaysCnt < self.measDelay_points:
                         self.state = "DELAY_ARM_DETECT"
@@ -852,7 +860,6 @@ class AudioAnalyzer(QObject):
 
                 elif time.monotonic() >= timer_expiry:   # Measurement didn't complete before timeout
                     logging.error("Pulse wasn't detected.  Retrying.")
-                    self.measure_delay(False)
                     self.state = "DELAY_ARM_DETECT"
 
 
