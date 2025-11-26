@@ -38,6 +38,7 @@ C_SWEEP_BASELINE_VOL = 10 ** (-12 / 20)  # -12dB
 C_DELAY_SPIKE_THRESH_ABOVE_NOISE_DB = 3
 C_SETTLE_FACTOR = 1.25
 
+C_VOL_INC_PER_RETRY_DB = 3   # Volume step [dB] for each delay measurement retry
 
 # ==============================================================================
 # CLASS DEFINITION
@@ -676,7 +677,9 @@ class AudioAnalyzer(QObject):
         next_it_time = time.monotonic()
         sweep_freq_cnt = 0
         timer_expiry = 0   # Timer expiry time, used for timed state machine transitions
+        retry_cnt = 0
         genMode = "TBD"
+        genVol = "TBD"
         prev_dbg_str = "??"
         dbg_str = "??"
         while not self._stop_requested:
@@ -713,6 +716,10 @@ class AudioAnalyzer(QObject):
                 if genMode != "TBD":
                     self.buf_man.msgSend("Gen", "change_mode", genMode)
                     genMode = "TBD"
+                if genVol != "TBD":
+                    self.buf_man.msgSend("Gen", "change_vol", genVol)
+                    genVol = "TBD"
+
 
                 self.sweepFreqs = [np.nan] * self.sweep_points
                 self.sweepAmpls = [np.nan] * self.sweep_points
@@ -781,16 +788,20 @@ class AudioAnalyzer(QObject):
 
             # --- RUN SM: Delay Measurement ---
             elif self.state == "DELAY_INIT":
-                if not self.runDelayMeas:    # Wait for previous measurement.  (Shouldn't happen)
+                if not self.runDelayMeas:
                     logging.info(f"{self.name}: AudioAnalyzer delay measurement started.")
                     self.measDelaySpike_TS = None
                     self.measDelays = [np.nan] * self.measDelay_points
                     self.measDelaysCnt = 0
                     retry_cnt = 0
                     genMode = self.buf_man.msgSend("Gen", "REQ_mode", None)
+                    genVol = self.buf_man.msgSend("Gen", "REQ_vol", None)
                     self.buf_man.msgSend("Gen", "change_mode", "Delay Meas")
                     self.state = "DELAY_ARM_DETECT"
                     timer_expiry = time.monotonic()  # No need to pause in DELAY_ARM_DETECT
+                else:
+                    logging.error("Recovering from lingering delay measurement")
+                    self.runDelayMeas = False
 
             elif self.state == "DELAY_ARM_DETECT":
                 if time.monotonic() >= timer_expiry:
@@ -806,6 +817,12 @@ class AudioAnalyzer(QObject):
                         pulse_freq = self.start_freq * (self.stop_freq / self.start_freq) ** (
                                 self.measDelaysCnt / (self.measDelay_points - 1))
 
+                    if retry_cnt > 0:
+                        self.buf_man.msgSend("Gen", "change_vol", genVol + C_VOL_INC_PER_RETRY_DB*retry_cnt)
+                    elif retry_cnt < 0:
+                        self.buf_man.msgSend("Gen", "change_vol", genVol)
+                        retry_cnt = 0
+
                     self.buf_man.msgSend("Gen", "gen_pulse", pulse_freq)
                     timer_expiry = time.monotonic() + 4
                     self.state = "DELAY_MEAS"
@@ -817,17 +834,24 @@ class AudioAnalyzer(QObject):
 
                     if pulse_gen_TS is None:
                         logging.error("Pulse wasn't generated.  Retrying.")
+                        retry_cnt += 1
                         timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     elif pulse_det_TS is None:
                         logging.error("Pulse timestamp wasn't detected.  Retrying.")
+                        retry_cnt += 1
                         timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     elif pulse_det_TS <= pulse_gen_TS:
                         logging.info("Pulse wasn't properly detected.  Retrying.")
+                        retry_cnt += 1
                         timer_expiry = time.monotonic() + 3     # Ensure there are no pulses still coming
                     else:
                         pulse_delay = pulse_det_TS - pulse_gen_TS
                         self.measDelays[self.measDelaysCnt] = pulse_delay
                         self.measDelaysCnt += 1
+                        if retry_cnt > 0:
+                            retry_cnt = -1    # Flag to restore volume
+                        else:
+                            retry_cnt = 0
                         timer_expiry = time.monotonic()         # No delay needed
 
                     if self.measDelaysCnt < self.measDelay_points:
@@ -851,6 +875,8 @@ class AudioAnalyzer(QObject):
                         self.measure_delay(False)
                         self.buf_man.msgSend("Gen", "change_mode", genMode)
                         genMode = "TBD"
+                        self.buf_man.msgSend("Gen", "change_vol", genVol)
+                        genVol = "TBD"
                         if sweep_on:
                             self.state = "SWEEP_INIT"
                         else:
@@ -860,6 +886,7 @@ class AudioAnalyzer(QObject):
 
                 elif time.monotonic() >= timer_expiry:   # Measurement didn't complete before timeout
                     logging.error("Pulse wasn't detected.  Retrying.")
+                    retry_cnt += 1
                     self.state = "DELAY_ARM_DETECT"
 
 

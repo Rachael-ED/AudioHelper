@@ -162,8 +162,8 @@ class AudioGen(QObject):
 
         elif msg_type == "REQ_mode":
             ack_data = self.mode
-        elif msg_type == "REQ_volume":
-            ack_data = self.vol
+        elif msg_type == "REQ_vol":
+            ack_data = 20*np.log10(self.vol)   # dB
         elif msg_type == "REQ_delay_meas_peak_ts":
             ack_data = self.delayMeasPeak_TS
 
@@ -321,17 +321,25 @@ class AudioGen(QObject):
                 #logging.info(f"AudioGen freq = {self.freq}Hz")
 
     def changeVol(self, newVolDB):
-        if re.search('^[+-]?\d+(\.\d+)?$', newVolDB):
-            newVolDB = float(newVolDB)   # Translate string to number
-            if (newVolDB >= C_VOL_MAX_DB):
+        logging.info(f"DBG: Changing volume to {newVolDB}")
+        if isinstance(newVolDB, int):
+            newVolDB = float(newVolDB)
+        elif isinstance(newVolDB, str) and re.search('^[+-]?\d+(\.\d+)?$', newVolDB):
+            newVolDB = float(newVolDB)
+
+        if isinstance(newVolDB, float):
+            if (newVolDB >= 1):
                 self.vol = 1
-                #logging.info(f"AudioGen volume = 1.0 = 0dB = MAX")
+                logging.info(f"AudioGen volume = 1.0 = 0dB = ABS MAX")
+            elif (newVolDB >= C_VOL_MAX_DB):
+                self.vol = float(10**(C_VOL_MAX_DB/20))
+                logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB = MAX")
             elif (newVolDB <= C_VOL_MIN_DB):
                 self.vol = 0
-                #logging.info(f"AudioGen volume = 0.0 = OFF")
+                logging.info(f"AudioGen volume = 0.0 = OFF")
             else:
                 self.vol = float(10**(newVolDB/20))
-                #logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
+                logging.info(f"AudioGen volume = {self.vol} = {20*np.log10(self.vol)}dB ")
 
     def changeMode(self, newMode):
         logging.info(f"Gen changing mode to {newMode}")
