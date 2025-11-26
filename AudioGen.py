@@ -312,10 +312,10 @@ class AudioGen(QObject):
             newFreq = float(newFreq)   # Translate string to number
             if newFreq <= C_FREQ_MIN:
                 self.freq = C_FREQ_MIN
-                #logging.info(f"AudioGen freq = {self.freq}Hz = MIN")
+                #logging.info(f"AudioGen freq = {newFreq}Hz ==> {self.freq}Hz = MIN")
             elif newFreq >= C_FREQ_MAX:
                 self.freq = C_FREQ_MAX
-                #logging.info(f"AudioGen freq = {self.freq}Hz = MAX")
+                #logging.info(f"AudioGen freq = {newFreq}Hz ==> {self.freq}Hz = MAX")
             else:
                 self.freq = newFreq
                 #logging.info(f"AudioGen freq = {self.freq}Hz")

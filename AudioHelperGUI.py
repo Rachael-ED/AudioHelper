@@ -829,7 +829,8 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
         elif self.btn_aud_gen_enable.text() == "Delay Meas":
             logging.info("Telling Ana to start measuring delay")
             self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
-            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Ana", "change_start_freq", self.txt_aud_gen_freq1.text())
+            self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq1.text())
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Ana", "measure_delay", True)
             self.btn_aud_gen_enable.setText("Stop Delay")
