@@ -111,13 +111,14 @@ class AudioAnalyzer(QObject):
         self.sweep_points = 100  # Number of sweep frequencies to measure
         self.sweepFreqs = [np.nan] * self.sweep_points  # Sweep frequencies, recorded by analyze()
         self.sweepAmpls = [np.nan] * self.sweep_points  # Measured sweep amplitudes, calculated by analyze()
+        self.sweepCnt = 0                               # Number of measurements captured
 
         self.analysis_num = 0  # Just a running counter of times analyze() is called, for debug
         self.threshold = 0.90
 
         # Set Up Debug File
         self.dbg_ana_file = None
-        # self.dbg_ana_file = 'dbg_ana' + datetime.now().strftime("_%y%m%d_%H%M%S") + '.csv'  # Set to None to disable
+        self.dbg_ana_file = 'dbg_ana' + datetime.now().strftime("_%y%m%d_%H%M%S") + '.csv'  # Set to None to disable
 
     def msgHandler(self, buf_id):
         # Retrieve Message
@@ -169,6 +170,7 @@ class AudioAnalyzer(QObject):
         elif msg_type == "clear_sweep":
             self.sweepFreqs = [np.nan] * self.sweep_points
             self.sweepAmpls = [np.nan] * self.sweep_points
+            self.sweepCnt = 0
 
         elif msg_type == "mic_data_sweep":
             [voltageAndTime, inputBuf_TS, currSweepFreq, currSweepFreq_TS] = msg_data
@@ -293,7 +295,7 @@ class AudioAnalyzer(QObject):
     # For new frequencies which lie outside the reference range, we have no other information,
     #     so we'll just extend the closest frequency of the reference.
     def refreq_ampl(self, ref_freq_list, ref_ampl_list, new_freq_list):
-        # Translate incoming lists to log
+         # Translate incoming lists to log
         #     Using np.log (not np.log10) since we'll use np.exp to un-log below
         ref_log_freq_list = np.log(np.clip(ref_freq_list, 1e-12, None))
         ref_log_ampl_list = np.log(np.clip(ref_ampl_list, 1e-12, None))
@@ -403,6 +405,7 @@ class AudioAnalyzer(QObject):
         if apply_cal:
             cal_ampl_list = self.cal_ampl_list
             if len(self.cal_ampl_list) != len(ampl_list):
+                # ~!~!~!~! self.cal_freq_list == [] at this point !!!!  FIX THIS BUG
                 cal_ampl_list = self.refreq_ampl(self.cal_freq_list, self.cal_ampl_list, freq_list)
             ampl_list = np.divide(ampl_list, cal_ampl_list)
 
@@ -458,6 +461,7 @@ class AudioAnalyzer(QObject):
         # See if Expected Sweep Frequency is Dominant in Buffer
         #     Only if we're analyzing a buffer captured during a sweep (which includes currSweepFreq)
         foundSweepFreq = None
+        conv_ampl_list = [np.nan] * (ampl_list.size*2 - 1)
         if currSweepFreq > 0:
             conv_ampl_list = np.convolve(ampl_list, ampl_list)
             max_ind = np.argmax(conv_ampl_list)
@@ -466,6 +470,10 @@ class AudioAnalyzer(QObject):
             if abs(det_freq - currSweepFreq) < (distBtwnFreq / 4):
                 foundSweepFreq = currSweepFreq
                 #logging.info(f"Detected freq : {det_freq:.3f} Hz")
+            elif (toneDuration > 10) and (toneDuration < 10.3):
+                logging.info(f"SWEEP IS STUCK !!!!!  max_ind = {max_ind}, det_freq = {det_freq}, distBtwnFreq = {distBtwnFreq}")
+                write_dbg = True
+
         buf_data_list = [bufDuration, toneDuration, foundSweepFreq, powerTotal, powerInBOI]
 
         # --------------------------------------------------------------------------------
@@ -500,19 +508,14 @@ class AudioAnalyzer(QObject):
 
         hist_ind = -1
         cntFreqFound = 0
-        hist_buf_str = "HISTORY BUFFER\n"
-        hist_buf_str += "   INDEX      BUF_DUR     TONE_DUR   FOUND_FREQ    PWR_TOTAL   PWR_IN_BOI\n"
+        hist_buf_str = ""   # Leave as empty string to disable debug output
+        if True:
+            hist_buf_str = "HISTORY BUFFER\n"
+            hist_buf_str += "   INDEX      BUF_DUR     TONE_DUR   FOUND_FREQ    PWR_TOTAL   PWR_IN_BOI   STATUS\n"
         for [hist_timestamp, hist_freq_list, hist_ampl_list, buf_data_list] in self.hist_list:
             [hist_bufDuration, hist_toneDuration, hist_foundSweepFreq, hist_powerTotal, hist_powerInBOI] = buf_data_list
             hist_ind += 1
-
-            # DEBUG
-            if True:
-                hist_buf_str += f"   {hist_ind:>5}   {hist_bufDuration:9.3f}s   {hist_toneDuration:9.3f}s   "
-                hist_buf_str += f"      None   " if hist_foundSweepFreq is None else f"{hist_foundSweepFreq:8.3f}Hz   "
-                hist_buf_str += f"      None   " if hist_powerTotal is None else f"{10*np.log10(hist_powerTotal):8.3f}dB   "
-                hist_buf_str += f"      None   " if hist_powerInBOI is None else f"{10*np.log10(hist_powerInBOI):8.3f}dB   "
-                hist_buf_str += "\n"
+            hist_buf_status = "OK"
 
             # Remap Amplitudes to Common Frequency List for Averaging
             adj_hist_ampl_list = hist_ampl_list
@@ -523,7 +526,11 @@ class AudioAnalyzer(QObject):
             allTS_list[hist_ind] = hist_timestamp
             allBufDuration_list[hist_ind] = hist_bufDuration
             allPowerTotal_list[hist_ind]= hist_powerTotal
-            if (hist_foundSweepFreq == currSweepFreq) and (hist_toneDuration >= settle_dur):
+            if hist_foundSweepFreq != currSweepFreq:
+                hist_buf_status = f"Wrong freq (exp: {currSweepFreq:7.3f}Hz)"
+            elif hist_toneDuration < settle_dur:
+                hist_buf_status = f"Tone not settled (exp: {settle_dur:5.3f}s)"
+            else:
                 freqFoundTS_list[cntFreqFound] = hist_timestamp
                 freqFoundBufDuration_list[cntFreqFound] = hist_bufDuration
                 freqFoundPowerInBOI_list[cntFreqFound] = hist_powerInBOI
@@ -532,6 +539,17 @@ class AudioAnalyzer(QObject):
             # Accumulate Metrics
             #     Using np.log (not np.log10) since we'll use np.exp to un-log below
             avg_ampl_list += np.log(np.clip(adj_hist_ampl_list, 1e-12, None))  # Sum up all logs, avoiding 0
+
+            # DEBUG
+            if hist_buf_str != "":
+                hist_buf_str += f"   {hist_ind:>5}   {hist_bufDuration:9.3f}s   {hist_toneDuration:9.3f}s   "
+                hist_buf_str += f"      None   " if hist_foundSweepFreq is None else f"{hist_foundSweepFreq:8.3f}Hz   "
+                hist_buf_str += f"      None   " if hist_powerTotal is None else f"{10*np.log10(hist_powerTotal):8.3f}dB   "
+                hist_buf_str += f"      None   " if hist_powerInBOI is None else f"{10*np.log10(hist_powerInBOI):8.3f}dB   "
+                hist_buf_str += f"{hist_buf_status:<40}"
+                hist_buf_str += "\n"
+
+
 
         avg_powerTotal = 0
         totalBufElapsed = 0
@@ -601,6 +619,26 @@ class AudioAnalyzer(QObject):
             plot_sweep_send_time = 0
             plot_sweep_ret_time = 0
             if sweep_ready:
+                k = self.sweepCnt
+                if k >= self.sweep_points:
+                    logging.warning(f"Preventing sweep data overflow (ind={k}, size={self.sweep_points})")
+                elif not np.isnan(self.sweepFreqs[k]):
+                    if self.sweepFreqs[k] == currSweepFreq:
+                        logging.error(f"Sweep data (ind={k}) already captured for {currSweepFreq:.3f}Hz")
+                    else:
+                        logging.error(f"Sweep data for freq={self.sweepFreqs[k]:.3f}Hz captured at ind={k}. Expecting {currSweepFreq:.3f}Hz")
+                else:
+                    logging.info(f"Storing sweep data for {currSweepFreq:.3f}Hz at ind={k}")
+                    self.sweepFreqs[k] = currSweepFreq
+                    self.sweepAmpls[k] = np.sqrt(avg_powerInBOI)
+                    self.sweepCnt = k+1
+                    self.runSweepMeas = False
+                    spec_buf = ["Sweep", self.sweepFreqs, self.sweepAmpls]
+                    plot_sweep_send_time = time.monotonic()
+                    self.buf_man.msgSend("Guido", "plot_data", spec_buf)
+                    plot_sweep_ret_time = time.monotonic()
+
+                """
                 for k in range(0, len(self.sweepFreqs)):
                     if np.isnan(self.sweepFreqs[k]):
                         self.sweepFreqs[k] = currSweepFreq
@@ -611,6 +649,7 @@ class AudioAnalyzer(QObject):
                         self.buf_man.msgSend("Guido", "plot_data", spec_buf)
                         plot_sweep_ret_time = time.monotonic()
                         break
+                """
 
             if dbg_out_en:
                 dbg_out_start_time = time.monotonic()
@@ -669,6 +708,10 @@ class AudioAnalyzer(QObject):
                     for ind in range(len(freq_list)):
                         csv_writer.writerow([ana_pass, 'FFT', freq_list[ind], ampl_list[ind]])
                     csv_writer.writerow([ana_pass])
+                    csv_writer.writerow([ana_pass, 'Conv', 'ConvAmpl'])
+                    for ind in range(len(conv_ampl_list)):
+                        csv_writer.writerow([ana_pass, 'Conv', conv_ampl_list[ind]])
+                    csv_writer.writerow([ana_pass])
 
     def run(self):
         logging.info("AudioAnalyzer started")
@@ -723,6 +766,7 @@ class AudioAnalyzer(QObject):
 
                 self.sweepFreqs = [np.nan] * self.sweep_points
                 self.sweepAmpls = [np.nan] * self.sweep_points
+                self.sweepCnt = 0
                 self.runSweepMeas = False
 
             # --- RUN SM: IDLE State ---
@@ -885,10 +929,41 @@ class AudioAnalyzer(QObject):
                             self.state = "IDLE"
 
                 elif time.monotonic() >= timer_expiry:   # Measurement didn't complete before timeout
-                    logging.error("Pulse wasn't detected.  Retrying.")
-                    retry_cnt += 1
-                    self.state = "DELAY_ARM_DETECT"
+                    if retry_cnt <= 5:
+                        logging.error("Pulse wasn't detected.  Retrying.")
+                        retry_cnt += 1
+                        self.state = "DELAY_ARM_DETECT"
 
+                    else:
+                        logging.error("Pulse wasn't detected.  Giving up.")
+
+                        self.measDelayMin = np.min(self.measDelays)
+                        self.measDelayAvg = np.average(self.measDelays)
+                        self.measDelayMax = np.max(self.measDelays)
+
+                        self.settle_dur = self.measDelayMax * C_SETTLE_FACTOR
+
+                        msg_str = (f"Measured Delay: \n"
+                                   f"Min:    {self.measDelayMin:.6f}s\n"
+                                   f"Avg:    {self.measDelayAvg:.6f}s\n"
+                                   f"Max:    {self.measDelayMax:.6f}s\n"
+                                   f"Cnt:    {self.measDelaysCnt} pulses\n"
+                                   f"Settle: {self.settle_dur:.6f}s")
+                        msg_str2 = f"\nDelay Data [s]:\n" + np.array2string(np.array(self.measDelays),
+                                                                            formatter={'float_kind': lambda x: "%.6f" % x})
+                        logging.info(msg_str + msg_str2)
+
+                        self.measure_delay(False)
+                        self.buf_man.msgSend("Gen", "change_mode", genMode)
+                        genMode = "TBD"
+                        self.buf_man.msgSend("Gen", "change_vol", genVol)
+                        genVol = "TBD"
+                        if sweep_on:
+                            self.state = "SWEEP_INIT"
+                        else:
+                            self.buf_man.msgSend("Guido", "MsgBox", msg_str)
+                            self.buf_man.msgSend("Guido", "delay_finished", None)
+                            self.state = "IDLE"
 
             # --- RUN SM: Delay Measurement ---
             elif self.state == "SWEEP_INIT":
@@ -912,7 +987,7 @@ class AudioAnalyzer(QObject):
             elif self.state == "SWEEP_MEAS":
                 if not self.runSweepMeas:    # Wait for measurement to complete
                     # When we're done, we'll generate 0, which stops Gen
-                    if sweep_freq_cnt >= self.sweep_points:
+                    if (sweep_freq_cnt >= self.sweep_points) or (self.start_freq == self.stop_freq):
                         self.sweep_freq = 0
                         logging.info(f"{self.name}: AudioAnalyzer sweep finished.")
                         self.measure_sweep(False)

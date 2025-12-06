@@ -200,21 +200,25 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
         self.line_def_dict = {
             "Live": {
                 "colour": "tab:blue",
+                "marker": "None",
                 "zorder": 2,
                 "alpha": 1
             },
             "Avg": {
                 "colour": "tab:orange",
+                "marker": "None",
                 "zorder": 2.1,
                 "alpha": 0.8
             },
             "Cal": {
                 "colour": "tab:green",
+                "marker": "None",
                 "zorder": 2.2,
                 "alpha": 0.7
             },
             "Sweep": {
                 "colour": "tab:red",
+                "marker": ".",
                 "zorder": 2.3,
                 "alpha": 0.7
             },
@@ -1095,16 +1099,18 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
         else:
             ###logging.info(f"Adding plot line: {name}")
             colour = ""
+            marker = "None"
             alpha = 0.5
             zorder = 2.5 + len(self.line_def_dict)/100   # On top of standard lines
             if name in self.line_def_dict.keys():
                 colour = self.line_def_dict[name]["colour"]
+                marker = self.line_def_dict[name]["marker"]
                 alpha = self.line_def_dict[name]["alpha"]
                 zorder = self.line_def_dict[name]["zorder"]
             else:
                 colour = self.line_colours[self.next_line_colour_ind]
                 self.next_line_colour_ind = (self.next_line_colour_ind + 1) % len(self.line_colours)
-            plt_refs = self .plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
+            plt_refs = self .plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha, marker=marker)
 
             self.line_dict[name] = {
                 "line_obj": plt_refs[0],     # Store Line2D object to reference layer
@@ -1112,6 +1118,7 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
                 "ampl_list": ampl_list,
                 "ampldb_list": ampldb_list,
                 "colour": colour,
+                "marker": marker,
                 "alpha": alpha,
                 "zorder": zorder
             }
@@ -1178,10 +1185,11 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
         freq_list = self.line_dict[name]["freq_list"]
         ampldb_list = self.line_dict[name]["ampldb_list"]
         colour = self.line_dict[name]["colour"]
+        marker = self.line_dict[name]["marker"]
         zorder = self.line_dict[name]["zorder"]
         alpha = self.line_dict[name]["alpha"]
 
-        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha)
+        plt_refs = self.plt_ax.plot(freq_list, ampldb_list, color=colour, label=name, zorder=zorder, alpha=alpha, marker=marker)
         self.line_dict[name]["line_obj"] = plt_refs[0]  # Store Line2D object to reference layer
 
         self.plt_ax.legend(fontsize="small")
