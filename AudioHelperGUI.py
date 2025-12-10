@@ -22,7 +22,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from ui_AudioHelperGUI_v4c import Ui_MainWindow
+from ui_AudioHelperGUI_v4d import Ui_MainWindow
 
 import BufferManager as BufMan
 import pyaudio as pa
@@ -36,7 +36,7 @@ matplotlib.use('QtAgg')
 # ==============================================================================
 # CONSTANTS AND GLOBALS
 #
-C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Noise Meas', 'Delay Meas', 'Sweep']
+C_AUD_GEN_MODE_LIST = ['Single Tone', 'Noise', 'Noise Meas', 'Delay Meas', 'Sweep', 'File Input']
 
 C_SPEC_MAX_DB = 80
 C_SPEC_MIN_DB = -80
@@ -110,6 +110,9 @@ class SetupWindow(QDialog):
                 if self.p.get_device_info_by_index(i).get('name') == self.p.get_device_info_by_index(self.win.defInput).get('name'):
                     self.inputs.setCurrentIndex(numIn)
 
+        # Add file input option to combobox
+        #self.inputs.addItem("File")
+
         # label inputs and outputs
         inputLabel = QLabel("Select Input:")
         outputLabel = QLabel("Select Output:")
@@ -131,6 +134,13 @@ class SetupWindow(QDialog):
         options.rejected.connect(self.cancel_click)
 
     def ok_click(self):
+        '''
+        # Put Gen in appropriate mode if file is selected
+        if self.inputs.currentText() == "File":
+            (file_name, filter) = QFileDialog.getOpenFileName(self, "Select File")
+            if file_name:
+                self.win.buf_man.msgSend("Gen", "file_input", file_name)
+        '''
         for i in range(0, self.numDevices):
             if self.p.get_device_info_by_index(i).get('maxOutputChannels') != 0:
                 if self.outputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
@@ -138,6 +148,7 @@ class SetupWindow(QDialog):
             elif self.p.get_device_info_by_index(i).get('maxInputChannels') != 0:
                 if self.inputs.currentText() == self.p.get_device_info_by_index(i).get('name'):
                     self.win.buf_man.msgSend("Mic", "change_input", i)
+                    #self.win.buf_man.msgSend("Gen", "file_input", None)
 
         self.close()
 
@@ -814,9 +825,10 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
         elif self.btn_aud_gen_enable.text() == "Play":
             logging.info("Telling AudioGen to turn on")
-            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
-            self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
-            self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
+            #self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            if self.cmb_aud_gen_mode.currentText() != "File Input":
+                self.buf_man.msgSend("Gen", "change_freq", self.txt_aud_gen_freq1.text())
+                self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
             self.buf_man.msgSend("Gen", "enable", True)
             self.btn_aud_gen_enable.setText("Stop")
 
@@ -832,7 +844,7 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
         elif self.btn_aud_gen_enable.text() == "Delay Meas":
             logging.info("Telling Ana to start measuring delay")
-            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            #self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
             self.buf_man.msgSend("Ana", "change_start_freq", self.txt_aud_gen_freq1.text())
             self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq1.text())
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
@@ -846,7 +858,7 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
         elif self.btn_aud_gen_enable.text() == "Sweep":
             logging.info("Telling AudioAna to start sweeping")
-            self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
+            #self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
             self.buf_man.msgSend("Ana", "change_start_freq", self.txt_aud_gen_freq1.text())
             self.buf_man.msgSend("Ana", "change_stop_freq", self.txt_aud_gen_freq2.text())
             self.buf_man.msgSend("Gen", "change_vol", self.txt_aud_gen_vol.text())
@@ -865,6 +877,12 @@ class AudioHelperGUI(QMainWindow, Ui_MainWindow):
 
     def cmb_aud_gen_mode_currentTextChanged(self, mode):
         logging.info(f"AudioGen mode changed to {mode}")
+
+        if self.cmb_aud_gen_mode.currentText() == "File Input":
+            (file_name, filter) = QFileDialog.getOpenFileName(self, "Select File")
+            self.buf_man.msgSend("Gen", "file_input", file_name)
+
+        self.buf_man.msgSend("Gen", "change_mode", self.cmb_aud_gen_mode.currentText())
         self.set_silence()
 
     def sld_pos_to_freq(self, pos):

@@ -13,6 +13,7 @@ from datetime import datetime
 import BufferManager as BufMan
 
 import csv
+import wave
 
 # ==============================================================================
 # CONSTANTS AND GLOBALS
@@ -74,6 +75,9 @@ class AudioGen(QObject):
         self.currVol = 0
         self._reopen_stream = False
         self.run_time = None           # Running time
+        self.file_input_mode = False
+        self.file_input_init = False
+        self.file_path = None
 
         self.delayMeasPeak_TS = None   # Timestamp of last generated delay measurement peak
 
@@ -140,6 +144,9 @@ class AudioGen(QObject):
                 val = msg_data[param]
                 if (param == "outputDevice") and (val in self.dev_name_to_ind):
                     self.changeOutputIndex(self.dev_name_to_ind[val])
+
+        elif msg_type == "file_input":
+            self.file_path = msg_data
 
         elif msg_type == "REQ_cfg_save":
             ack_data = {
@@ -211,6 +218,15 @@ class AudioGen(QObject):
                                     output_device_index=self.outputIndex, frames_per_buffer=self.framesPerBuffer)
                 self._reopen_stream = False
 
+            # open the wave file reader and pyaudio stream
+            if self.file_input_init:
+                self.open_wav = wave.open(self.file_path, 'rb')
+
+                sound = pa.PyAudio()
+                stream = sound.open(format = sound.get_format_from_width(self.open_wav.getsampwidth()), channels=self.open_wav.getnchannels(), rate=self.open_wav.getframerate(), output=True, output_device_index=self.outputIndex)
+                self.file_input_init = False
+
+
             if not self._audio_on:
                 end_vol = 0
 
@@ -256,7 +272,15 @@ class AudioGen(QObject):
                     prev_pulse_state = pulse_state
 
                 # Start with Tone of Unit Amplitude
-                if (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas"):
+                if mode == "File Input":
+                    self.file_frames = self.open_wav.readframes(1024)
+
+                    while self.file_frames and self._audio_on:
+                        stream.write(self.file_frames)
+                        self.file_frames = self.open_wav.readframes(1024)
+                    self.file_input_mode = False
+
+                elif (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas"):
                     # keep track of current frequency
                     prevFreq = self.currFreq
                     self.currFreq = self.freq
@@ -344,6 +368,10 @@ class AudioGen(QObject):
     def changeMode(self, newMode):
         logging.info(f"Gen changing mode to {newMode}")
         self.mode = newMode
+        if newMode == "File Input":
+            self.file_input_init = True
+        else:
+            self._reopen_stream = True
 
     def playTone(self, playFreq):
         # First tell Mic that any previous tone has stopped, and confirm that it was seen
