@@ -222,8 +222,17 @@ class AudioGen(QObject):
             if self.file_input_init:
                 self.open_wav = wave.open(self.file_path, 'rb')
 
+                """
                 sound = pa.PyAudio()
-                stream = sound.open(format = sound.get_format_from_width(self.open_wav.getsampwidth()), channels=self.open_wav.getnchannels(), rate=self.open_wav.getframerate(), output=True, output_device_index=self.outputIndex)
+                stream = sound.open(format = sound.get_format_from_width(self.open_wav.getsampwidth()), channels=self.open_wav.getnchannels(),
+                                    rate=self.open_wav.getframerate(), output=True, output_device_index=self.outputIndex)
+                logging.info(f"DEBUG: Opened sound with: \n"
+                             f"    format      = {sound.get_format_from_width(self.open_wav.getsampwidth())}\n"
+                             f"    channels    = {self.open_wav.getnchannels()}\n"
+                             f"    rate        = {self.open_wav.getframerate()}\n"
+                             f"    out index   = {self.outputIndex}\n")
+                """
+
                 self.file_input_init = False
 
 
@@ -276,9 +285,17 @@ class AudioGen(QObject):
                     self.file_frames = self.open_wav.readframes(1024)
 
                     while self.file_frames and self._audio_on:
-                        stream.write(self.file_frames)
+                        #stream.write(self.file_frames)
+
+                        temp_out_array = np.frombuffer(self.file_frames, dtype=np.int16)
+                        temp_out_array = temp_out_array/32768
+                        temp_out_array = temp_out_array.astype(np.float32)
+                        stream.write(temp_out_array, num_frames=temp_out_array.size)
+
                         self.file_frames = self.open_wav.readframes(1024)
+
                     self.file_input_mode = False
+                    self.enable(False)
 
                 elif (mode == "Single Tone") or (mode == "Sweep") or (mode == "Delay Meas"):
                     # keep track of current frequency
